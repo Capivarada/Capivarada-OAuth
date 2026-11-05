@@ -30,10 +30,18 @@ public sealed class MatchProgressionFunction
                 Entity = new { Id = result.EntityId, Type = result.EntityType }, TransactionId = result.MatchId,
                 Statistics = new object[]
                 {
-                    new { Name = options.MatchesStatistic, Scores = new[] { "1" }, Metadata = metadata },
-                    new { Name = options.EliminationsStatistic, Scores = new[] { Math.Max(0, result.Eliminations).ToString() }, Metadata = metadata },
-                    new { Name = options.WinsStatistic, Scores = new[] { result.Won ? "1" : "0" }, Metadata = metadata },
-                    new { Name = options.LevelStatistic, Scores = new[] { totals.Level.ToString() }, Metadata = metadata }
+                    new
+                    {
+                        Name = options.PlayerPerformanceStatistic,
+                        Scores = new[]
+                        {
+                            totals.Matches.ToString(),
+                            totals.Wins.ToString(),
+                            totals.Eliminations.ToString(),
+                            totals.Level.ToString()
+                        },
+                        Metadata = metadata
+                    }
                 }
             });
             return await Reply(request, HttpStatusCode.OK, totals);
@@ -43,19 +51,26 @@ public sealed class MatchProgressionFunction
 
     private async Task<PlayerTotals> ReadTotals(string entityId, string entityType)
     {
-        JsonElement response = await playFab.CallAsync("Statistic", "GetStatistics", new { Entity = new { Id = entityId, Type = entityType }, StatisticNames = new[] { options.MatchesStatistic, options.EliminationsStatistic, options.WinsStatistic, options.LevelStatistic } });
+        JsonElement response = await playFab.CallAsync("Statistic", "GetStatistics", new { Entity = new { Id = entityId, Type = entityType }, StatisticNames = new[] { options.PlayerPerformanceStatistic } });
         PlayerTotals totals = new();
         if (!response.TryGetProperty("Statistics", out JsonElement values)) return totals;
         foreach (JsonElement statistic in values.EnumerateArray())
         {
-            string name = statistic.GetProperty("Name").GetString() ?? string.Empty;
-            int score = statistic.TryGetProperty("Scores", out JsonElement scores) && scores.GetArrayLength() > 0 && int.TryParse(scores[0].GetString(), out int number) ? number : 0;
-            if (name == options.MatchesStatistic) totals.Matches = score;
-            else if (name == options.EliminationsStatistic) totals.Eliminations = score;
-            else if (name == options.WinsStatistic) totals.Wins = score;
-            else if (name == options.LevelStatistic) totals.Level = Math.Max(1, score);
+            if (statistic.GetProperty("Name").GetString() != options.PlayerPerformanceStatistic || !statistic.TryGetProperty("Scores", out JsonElement scores)) continue;
+            totals.Matches = Score(scores, 0);
+            totals.Wins = Score(scores, 1);
+            totals.Eliminations = Score(scores, 2);
+            totals.Level = Math.Max(1, Score(scores, 3));
         }
         return totals;
+    }
+    private static int Score(JsonElement scores, int index)
+    {
+        if (scores.ValueKind != JsonValueKind.Array || scores.GetArrayLength() <= index) return 0;
+        JsonElement value = scores[index];
+        return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number)
+            ? number
+            : int.TryParse(value.GetString(), out number) ? number : 0;
     }
     private static async Task<HttpResponseData> Reply(HttpRequestData request, HttpStatusCode status, object body) { HttpResponseData response = request.CreateResponse(status); response.Headers.Add("Content-Type", "application/json; charset=utf-8"); await response.WriteStringAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })); return response; }
     private sealed class MatchSettlement { public string MatchId { get; set; } = string.Empty; public string EntityId { get; set; } = string.Empty; public string EntityType { get; set; } = "title_player_account"; public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Eliminations { get; set; } public bool Won { get; set; } public int Level { get; set; } = 1; }

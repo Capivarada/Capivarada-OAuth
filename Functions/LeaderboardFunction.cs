@@ -56,7 +56,7 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
         foreach (JsonElement source in rankings.EnumerateArray())
         {
             LeaderboardMetadata metadata = ReadMetadata(source);
-            long score = source.TryGetProperty("Scores", out JsonElement scores) && scores.GetArrayLength() > 0 && long.TryParse(scores[0].GetString(), out long parsed) ? parsed : 0;
+            long score = source.TryGetProperty("Scores", out JsonElement scores) ? Score(scores, 0) : 0;
             if (leaderboardName == "RankingMatches") metadata.Matches = (int)score;
             else if (leaderboardName == "RankingEliminations") metadata.Eliminations = (int)score;
             else if (leaderboardName == "RankingWins") metadata.Wins = (int)score;
@@ -72,6 +72,14 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
         if (!source.TryGetProperty("Metadata", out JsonElement raw) || raw.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(raw.GetString())) return new LeaderboardMetadata();
         try { return JsonSerializer.Deserialize<LeaderboardMetadata>(raw.GetString()!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new LeaderboardMetadata(); }
         catch (JsonException) { return new LeaderboardMetadata(); }
+    }
+    private static long Score(JsonElement scores, int index)
+    {
+        if (scores.ValueKind != JsonValueKind.Array || scores.GetArrayLength() <= index) return 0;
+        JsonElement value = scores[index];
+        return value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long number)
+            ? number
+            : long.TryParse(value.GetString(), out number) ? number : 0;
     }
     private static async Task<HttpResponseData> Ok(HttpRequestData request, object value) { HttpResponseData response = request.CreateResponse(HttpStatusCode.OK); response.Headers.Add("Content-Type", "application/json; charset=utf-8"); await response.WriteStringAsync(JsonSerializer.Serialize(value, Json)); return response; }
     private static async Task<HttpResponseData> Bad(HttpRequestData request, string message) { HttpResponseData response = request.CreateResponse(HttpStatusCode.BadRequest); await response.WriteStringAsync(JsonSerializer.Serialize(new { error = message }, Json)); return response; }

@@ -14,16 +14,26 @@ public sealed class ProfileProgressionFunction : AuthenticatedFunction
         var (_, error) = await RequirePlayerAsync(request); if (error != null) return error;
         try
         {
-            JsonElement data = await progression.CallAsync(request, "Statistic", "GetStatistics", new { StatisticNames = new[] { options.MatchesStatistic, options.EliminationsStatistic, options.WinsStatistic, options.LevelStatistic } });
+            JsonElement data = await progression.CallAsync(request, "Statistic", "GetStatistics", new { StatisticNames = new[] { options.PlayerPerformanceStatistic } });
             int matches = 0, eliminations = 0, wins = 0, level = 1;
             if (data.TryGetProperty("Statistics", out JsonElement values)) foreach (JsonElement value in values.EnumerateArray())
             {
-                string name = value.GetProperty("Name").GetString() ?? string.Empty;
-                int score = value.TryGetProperty("Scores", out JsonElement scores) && scores.GetArrayLength() > 0 && int.TryParse(scores[0].GetString(), out int current) ? current : 0;
-                if (name == options.MatchesStatistic) matches = score; else if (name == options.EliminationsStatistic) eliminations = score; else if (name == options.WinsStatistic) wins = score; else if (name == options.LevelStatistic) level = Math.Max(1, score);
+                if (value.GetProperty("Name").GetString() != options.PlayerPerformanceStatistic || !value.TryGetProperty("Scores", out JsonElement scores)) continue;
+                matches = Score(scores, 0);
+                wins = Score(scores, 1);
+                eliminations = Score(scores, 2);
+                level = Math.Max(1, Score(scores, 3));
             }
             HttpResponseData response = request.CreateResponse(HttpStatusCode.OK); await response.WriteStringAsync(JsonSerializer.Serialize(new { matches, eliminations, wins, level }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })); return response;
         }
         catch (Exception exception) { Console.Error.WriteLine(exception); HttpResponseData response = request.CreateResponse(HttpStatusCode.InternalServerError); await response.WriteStringAsync("{\"error\":\"Falha ao carregar progressão.\"}"); return response; }
+    }
+    private static int Score(JsonElement scores, int index)
+    {
+        if (scores.ValueKind != JsonValueKind.Array || scores.GetArrayLength() <= index) return 0;
+        JsonElement value = scores[index];
+        return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number)
+            ? number
+            : int.TryParse(value.GetString(), out number) ? number : 0;
     }
 }

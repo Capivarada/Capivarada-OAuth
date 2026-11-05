@@ -9,10 +9,11 @@ public sealed class CapivaradaOptions
     public string EliminationsLeaderboard { get; init; } = "RankingEliminations";
     public string WinsLeaderboard { get; init; } = "RankingWins";
     public string LevelLeaderboard { get; init; } = "RankingLevel";
-    public string MatchesStatistic { get; init; } = "Matches";
-    public string EliminationsStatistic { get; init; } = "Eliminations";
-    public string WinsStatistic { get; init; } = "Wins";
-    public string LevelStatistic { get; init; } = "Level";
+    /// <summary>
+    /// One multicolumn statistic. Its score order is Matches, Wins,
+    /// Eliminations, Level, matching the PlayFab definition.
+    /// </summary>
+    public string PlayerPerformanceStatistic { get; init; } = "PlayerPerformance";
 
     public static CapivaradaOptions From(IConfiguration configuration) => new()
     {
@@ -23,9 +24,6 @@ public sealed class CapivaradaOptions
         EliminationsLeaderboard = configuration["LEADERBOARD_ELIMINATIONS"] ?? "RankingEliminations",
         WinsLeaderboard = configuration["LEADERBOARD_WINS"] ?? "RankingWins",
         LevelLeaderboard = configuration["LEADERBOARD_LEVEL"] ?? "RankingLevel"
-        ,MatchesStatistic = configuration["STATISTIC_MATCHES"] ?? "Matches"
-        ,EliminationsStatistic = configuration["STATISTIC_ELIMINATIONS"] ?? "Eliminations"
-        ,WinsStatistic = configuration["STATISTIC_WINS"] ?? "Wins"
-        ,LevelStatistic = configuration["STATISTIC_LEVEL"] ?? "Level"
+        ,PlayerPerformanceStatistic = configuration["STATISTIC_PLAYER_PERFORMANCE"] ?? "PlayerPerformance"
     };
 }

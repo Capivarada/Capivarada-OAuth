@@ -53,6 +53,7 @@ No Function App `capivarada-functions-dev`, em **Configurações > Variáveis de
 | `LEADERBOARD_WINS` | `RankingWins` |
 | `LEADERBOARD_LEVEL` | `RankingLevel` |
 | `CAPIVARADA_MATCH_SERVER_SECRET` | Segredo longo, exclusivo do futuro servidor de partidas. |
+| `STATISTIC_PLAYER_PERFORMANCE` | `PlayerPerformance` |
 
 O endpoint `/api/matches/settle` exige o cabeçalho `X-Capivarada-Match-Secret` com esse segredo. Ele **não** deve ser chamado pela Unity enquanto não existir um servidor de partidas confiável.
 
@@ -62,4 +63,4 @@ Após publicar, configure a URL de recuperação de senha do PlayFab como:
 
 ## Estado atual
 
-Ranking V2, progressão, amizades e recuperação de senha já estão hospedados neste projeto. A importação/loja Economy V2 está intencionalmente pausada até a definição final do catálogo de acessórios. O cliente Unity não recebe nem armazena a Secret Key do PlayFab.
+Ranking V2, progressão, amizades e recuperação de senha já estão hospedados neste projeto. A statistic `PlayerPerformance` é multicoluna e usa a ordem fixa `Matches`, `Wins`, `Eliminations`, `Level`; cada leaderboard aponta para sua coluna correspondente. A importação/loja Economy V2 está intencionalmente pausada até a definição final do catálogo de acessórios. O cliente Unity não recebe nem armazena a Secret Key do PlayFab.
