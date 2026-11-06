@@ -46,6 +46,21 @@ public sealed class PlayFabServerClient
     public Task RemoveFriendAsync(string playerId, string friendId, CancellationToken cancellationToken = default) =>
         CallAsync("RemoveFriend", new { PlayFabId = playerId, FriendPlayFabId = friendId }, cancellationToken);
 
+    public async Task<bool> AreFriendsAsync(string playerId, string otherPlayerId, CancellationToken cancellationToken = default)
+    {
+        JsonElement data = await CallAsync("GetFriendsList", new { PlayFabId = playerId }, cancellationToken);
+        if (!data.TryGetProperty("Friends", out JsonElement friends)) return false;
+
+        foreach (JsonElement friend in friends.EnumerateArray())
+        {
+            if (friend.TryGetProperty("FriendPlayFabId", out JsonElement id)
+                && string.Equals(id.GetString(), otherPlayerId, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
     public async Task<string?> ResolvePlayerIdAsync(string nicknameOrId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(nicknameOrId)) return null;

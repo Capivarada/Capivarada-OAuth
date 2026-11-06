@@ -63,9 +63,14 @@ public sealed class FriendsFunction : AuthenticatedFunction
                 return await Bad(request, message);
             }
             if (targetId == session!.Value.PlayFabId) return await Bad(request, "Você não pode adicionar a si mesmo.");
+
+            if (await playFab.AreFriendsAsync(session.Value.PlayFabId, targetId))
+                return await Bad(request, "Este jogador já está na sua lista de amigos.");
+
             FriendRequestState sender = await playFab.GetFriendStateAsync(session.Value.PlayFabId);
             FriendRequestState target = await playFab.GetFriendStateAsync(targetId);
             if (sender.Outgoing.Exists(x => x.TargetPlayerId == targetId)) return await Bad(request, "Já existe uma solicitação pendente para este jogador.");
+            if (sender.Incoming.Exists(x => x.SenderPlayerId == targetId)) return await Bad(request, "Este jogador já enviou uma solicitação para você. Aceite ou recuse-a na aba de solicitações.");
             FriendRequestRecord record = new() { SenderPlayerId = session.Value.PlayFabId, TargetPlayerId = targetId };
             sender.Outgoing.Add(record); target.Incoming.Add(record);
             await playFab.SaveFriendStateAsync(session.Value.PlayFabId, sender); await playFab.SaveFriendStateAsync(targetId, target);
