@@ -54,12 +54,12 @@ public sealed class PlayFabServerClient
         if (nicknameOrId.Length < 12 || !nicknameOrId.All(char.IsLetterOrDigit)) return null;
         try
         {
-            JsonElement account = await CallAsync("GetAccountInfo", new { PlayFabId = nicknameOrId }, cancellationToken);
-            return account.TryGetProperty("AccountInfo", out JsonElement info) && info.TryGetProperty("PlayFabId", out JsonElement id)
+            JsonElement account = await CallAsync("GetUserAccountInfo", new { PlayFabId = nicknameOrId }, cancellationToken);
+            return account.TryGetProperty("UserInfo", out JsonElement info) && info.TryGetProperty("PlayFabId", out JsonElement id)
                 ? id.GetString()
                 : null;
         }
-        catch (InvalidOperationException exception) when (exception.Message.StartsWith("PlayFab Server/GetAccountInfo (400)", StringComparison.Ordinal))
+        catch (InvalidOperationException exception) when (exception.Message.StartsWith("PlayFab Server/GetUserAccountInfo (400)", StringComparison.Ordinal))
         {
             return null;
         }
@@ -67,8 +67,8 @@ public sealed class PlayFabServerClient
 
     public async Task<FriendSummary> GetSummaryAsync(string playerId, CancellationToken cancellationToken = default)
     {
-        JsonElement account = await CallAsync("GetAccountInfo", new { PlayFabId = playerId }, cancellationToken);
-        string nickname = account.TryGetProperty("AccountInfo", out JsonElement info) && info.TryGetProperty("TitleInfo", out JsonElement title) && title.TryGetProperty("DisplayName", out JsonElement name)
+        JsonElement account = await CallAsync("GetUserAccountInfo", new { PlayFabId = playerId }, cancellationToken);
+        string nickname = account.TryGetProperty("UserInfo", out JsonElement info) && info.TryGetProperty("TitleInfo", out JsonElement title) && title.TryGetProperty("DisplayName", out JsonElement name)
             ? name.GetString() ?? "Capivara" : "Capivara";
         return new FriendSummary { PlayerId = playerId, Nickname = nickname };
     }
