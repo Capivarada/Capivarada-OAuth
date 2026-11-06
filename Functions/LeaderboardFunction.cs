@@ -8,18 +8,20 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly PlayFabEntityClient leaderboards;
+    private readonly PlayFabTitleEntityClient titleLeaderboards;
     private readonly CapivaradaOptions options;
-    public LeaderboardFunction(PlayerSessionService sessions, PlayFabEntityClient leaderboards, CapivaradaOptions options) : base(sessions) { this.leaderboards = leaderboards; this.options = options; }
+    public LeaderboardFunction(PlayerSessionService sessions, PlayFabEntityClient leaderboards, PlayFabTitleEntityClient titleLeaderboards, CapivaradaOptions options) : base(sessions) { this.leaderboards = leaderboards; this.titleLeaderboards = titleLeaderboards; this.options = options; }
 
     [Function("GetLeaderboardV2")]
     public async Task<HttpResponseData> Get([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "leaderboards/{name}")] HttpRequestData request, string name)
     {
-        var (_, error) = await RequirePlayerAsync(request); if (error != null) return error;
         if (!Allowed(name)) return await Bad(request, "Leaderboard não autorizado.");
         int count = QueryCount(request.Url);
         try
         {
-            JsonElement data = await leaderboards.CallAsync(request, "Leaderboard", "GetLeaderboard", new { LeaderboardName = name, PageSize = count });
+            // This endpoint deliberately exposes only the public leaderboard
+            // projection. It never accepts a player-provided result.
+            JsonElement data = await titleLeaderboards.CallAsync("Leaderboard", "GetLeaderboard", new { LeaderboardName = name, PageSize = count });
             return await Ok(request, new { entries = Map(data, name) });
         }
         catch (Exception exception) { Console.Error.WriteLine(exception); return await Fail(request, "Não foi possível carregar o ranking."); }

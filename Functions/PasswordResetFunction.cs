@@ -143,7 +143,10 @@ public sealed class PasswordResetFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")]
         HttpRequestData request)
     {
-        return await CreateTextResponse(request, HttpStatusCode.OK, "Capivarada Functions online.");
+        HttpResponseData response = request.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync("{\"status\":\"ok\",\"serverVersion\":\"functions-1\",\"environment\":\"development\"}");
+        return response;
     }
 
     [Function("PasswordResetStaticFile")]
