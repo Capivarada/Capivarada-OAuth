@@ -109,6 +109,35 @@ public sealed class PasswordResetFunction
             }));
     }
 
+    [Function("PasswordRecoveryRequest")]
+    public async Task<HttpResponseData> RequestRecovery(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "password/request")]
+        HttpRequestData request)
+    {
+        RecoveryRequest? input;
+        try
+        {
+            input = await request.ReadFromJsonAsync<RecoveryRequest>();
+        }
+        catch
+        {
+            input = null;
+        }
+
+        if (input is null || string.IsNullOrWhiteSpace(input.Email) || !input.Email.Contains('@'))
+            return await CreateTextResponse(request, HttpStatusCode.BadRequest, "E-mail inválido.");
+
+        PlayFabRecoveryEmailResult result = await playFab.SendRecoveryEmailAsync(input.Email.Trim());
+        if (!result.Succeeded)
+            logger.LogWarning("Solicitação de recuperação recusada pelo PlayFab. Status: {StatusCode}", result.StatusCode);
+
+        // Do not reveal whether this email belongs to an account.
+        HttpResponseData response = request.CreateResponse(HttpStatusCode.Accepted);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync("{\"accepted\":true}");
+        return response;
+    }
+
     [Function("Health")]
     public async Task<HttpResponseData> Health(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")]
@@ -165,5 +194,10 @@ public sealed class PasswordResetFunction
         response.Headers.Add("X-Content-Type-Options", "nosniff");
         await response.WriteStringAsync(content);
         return response;
+    }
+
+    private sealed class RecoveryRequest
+    {
+        public string? Email { get; set; }
     }
 }

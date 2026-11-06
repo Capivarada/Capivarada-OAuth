@@ -38,6 +38,28 @@ public sealed class PlayFabAdminClient
         using HttpResponseMessage response = await client.SendAsync(request);
         return new PlayFabResetResult(response.IsSuccessStatusCode, response.StatusCode);
     }
+
+    public async Task<PlayFabRecoveryEmailResult> SendRecoveryEmailAsync(string email)
+    {
+        string? titleId = configuration["PLAYFAB_TITLE_ID"];
+        string? secretKey = configuration["PLAYFAB_SECRET_KEY"];
+        string? templateId = configuration["PLAYFAB_RECOVERY_EMAIL_TEMPLATE_ID"];
+
+        if (string.IsNullOrWhiteSpace(titleId) || string.IsNullOrWhiteSpace(secretKey) || string.IsNullOrWhiteSpace(templateId))
+        {
+            logger.LogError("As configurações de recuperação de senha do PlayFab não foram definidas.");
+            return new PlayFabRecoveryEmailResult(false, HttpStatusCode.InternalServerError);
+        }
+
+        using HttpRequestMessage request = new(HttpMethod.Post, $"https://{titleId}.playfabapi.com/Admin/SendAccountRecoveryEmail");
+        request.Headers.Add("X-SecretKey", secretKey);
+        request.Content = JsonContent.Create(new { Email = email, EmailTemplateId = templateId });
+
+        using HttpClient client = httpClientFactory.CreateClient();
+        using HttpResponseMessage response = await client.SendAsync(request);
+        return new PlayFabRecoveryEmailResult(response.IsSuccessStatusCode, response.StatusCode);
+    }
 }
 
 public readonly record struct PlayFabResetResult(bool Succeeded, HttpStatusCode StatusCode);
+public readonly record struct PlayFabRecoveryEmailResult(bool Succeeded, HttpStatusCode StatusCode);
