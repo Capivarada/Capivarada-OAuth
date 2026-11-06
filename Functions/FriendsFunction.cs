@@ -49,8 +49,19 @@ public sealed class FriendsFunction : AuthenticatedFunction
         if (string.IsNullOrWhiteSpace(targetInput)) return await Bad(request, "Informe o ID ou apelido do jogador.");
         try
         {
-            string? targetId = await playFab.ResolvePlayerIdAsync(targetInput.Trim()) ?? await nicknameIndex.ResolveAsync(targetInput.Trim());
-            if (string.IsNullOrWhiteSpace(targetId)) return await Bad(request, "Jogador não encontrado. Confira o apelido ou ID PlayFab.");
+            string lookup = targetInput.Trim();
+            bool isPlayFabId = PlayFabServerClient.LooksLikePlayFabId(lookup);
+            string? targetId = isPlayFabId
+                ? await playFab.ResolvePlayerIdAsync(lookup)
+                : await nicknameIndex.ResolveAsync(lookup);
+
+            if (string.IsNullOrWhiteSpace(targetId))
+            {
+                string message = isPlayFabId
+                    ? "Nenhuma conta foi encontrada com este ID PlayFab. Use o ID exibido no Perfil do jogador; Master ID e Entity ID não servem aqui."
+                    : "Apelido não localizado. O jogador precisa abrir esta versão do jogo uma vez para registrar o apelido — não precisa ficar online.";
+                return await Bad(request, message);
+            }
             if (targetId == session!.Value.PlayFabId) return await Bad(request, "Você não pode adicionar a si mesmo.");
             FriendRequestState sender = await playFab.GetFriendStateAsync(session.Value.PlayFabId);
             FriendRequestState target = await playFab.GetFriendStateAsync(targetId);

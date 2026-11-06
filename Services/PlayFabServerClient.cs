@@ -65,6 +65,17 @@ public sealed class PlayFabServerClient
         }
     }
 
+    /// <summary>
+    /// A PlayFabId is the hexadecimal identifier exposed by the game's profile UI.
+    /// Entity IDs and MasterPlayerIds are different identifiers and cannot be used by
+    /// the Server GetUserAccountInfo endpoint.
+    /// </summary>
+    public static bool LooksLikePlayFabId(string value) =>
+        value.Length >= 12 && value.All(character =>
+            (character >= '0' && character <= '9') ||
+            (character >= 'A' && character <= 'F') ||
+            (character >= 'a' && character <= 'f'));
+
     public async Task<FriendSummary> GetSummaryAsync(string playerId, CancellationToken cancellationToken = default)
     {
         JsonElement account = await CallAsync("GetUserAccountInfo", new { PlayFabId = playerId }, cancellationToken);
