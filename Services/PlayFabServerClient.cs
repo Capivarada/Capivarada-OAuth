@@ -49,11 +49,20 @@ public sealed class PlayFabServerClient
     public async Task<string?> ResolvePlayerIdAsync(string nicknameOrId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(nicknameOrId)) return null;
-        // A PlayFabId is accepted as-is; when it is a nickname, resolve it through the title display-name endpoint.
-        if (nicknameOrId.Length >= 12 && nicknameOrId.All(char.IsLetterOrDigit)) return nicknameOrId;
-        JsonElement data = await CallAsync("GetPlayFabIDsFromTitleDisplayNames", new { DisplayNames = new[] { nicknameOrId } }, cancellationToken);
-        if (!data.TryGetProperty("Data", out JsonElement matches) || matches.GetArrayLength() == 0) return null;
-        return matches[0].TryGetProperty("PlayFabId", out JsonElement id) ? id.GetString() : null;
+        // PlayFab's Server API has no endpoint that resolves an arbitrary title display name.
+        // Treat this endpoint as an ID lookup until the title's nickname-index service is introduced.
+        if (nicknameOrId.Length < 12 || !nicknameOrId.All(char.IsLetterOrDigit)) return null;
+        try
+        {
+            JsonElement account = await CallAsync("GetAccountInfo", new { PlayFabId = nicknameOrId }, cancellationToken);
+            return account.TryGetProperty("AccountInfo", out JsonElement info) && info.TryGetProperty("PlayFabId", out JsonElement id)
+                ? id.GetString()
+                : null;
+        }
+        catch (InvalidOperationException exception) when (exception.Message.StartsWith("PlayFab Server/GetAccountInfo (400)", StringComparison.Ordinal))
+        {
+            return null;
+        }
     }
 
     public async Task<FriendSummary> GetSummaryAsync(string playerId, CancellationToken cancellationToken = default)

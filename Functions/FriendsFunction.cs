@@ -7,7 +7,8 @@ public sealed class FriendsFunction : AuthenticatedFunction
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly PlayFabServerClient playFab;
-    public FriendsFunction(PlayerSessionService sessions, PlayFabServerClient playFab) : base(sessions) => this.playFab = playFab;
+    private readonly NicknameIndexService nicknameIndex;
+    public FriendsFunction(PlayerSessionService sessions, PlayFabServerClient playFab, NicknameIndexService nicknameIndex) : base(sessions) { this.playFab = playFab; this.nicknameIndex = nicknameIndex; }
 
     [Function("ListFriends")]
     public async Task<HttpResponseData> List([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "friends")] HttpRequestData request)
@@ -48,8 +49,8 @@ public sealed class FriendsFunction : AuthenticatedFunction
         if (string.IsNullOrWhiteSpace(targetInput)) return await Bad(request, "Informe o ID ou apelido do jogador.");
         try
         {
-            string? targetId = await playFab.ResolvePlayerIdAsync(targetInput.Trim());
-            if (string.IsNullOrWhiteSpace(targetId)) return await Bad(request, "Jogador não encontrado.");
+            string? targetId = await playFab.ResolvePlayerIdAsync(targetInput.Trim()) ?? await nicknameIndex.ResolveAsync(targetInput.Trim());
+            if (string.IsNullOrWhiteSpace(targetId)) return await Bad(request, "Jogador não encontrado. Confira o apelido ou ID PlayFab.");
             if (targetId == session!.Value.PlayFabId) return await Bad(request, "Você não pode adicionar a si mesmo.");
             FriendRequestState sender = await playFab.GetFriendStateAsync(session.Value.PlayFabId);
             FriendRequestState target = await playFab.GetFriendStateAsync(targetId);

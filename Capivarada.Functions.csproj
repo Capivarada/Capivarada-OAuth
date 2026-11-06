@@ -12,6 +12,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.50.0" />
         <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.3.0" />
+        <PackageReference Include="Azure.Data.Tables" Version="12.10.0" />
     </ItemGroup>
 
     <ItemGroup>
