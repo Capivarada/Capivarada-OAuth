@@ -11,9 +11,10 @@ Backend do Capivarada hospedado no Azure Functions. Este repositório substitui 
 | POST | `/api/password/reset` | Redefine a senha usando o token temporário do PlayFab. |
 | GET | `/api/static/Logo_Capivarada.png` | Logo usada exclusivamente na página de redefinição. |
 | GET | `/api/static/reset-password.css` | Estilo compartilhado das páginas de recuperação. |
-| GET | `/api/leaderboards/{name}?count=10` | Ranking V2 autenticado. Aceita `RankingMatches`, `RankingEliminations`, `RankingWins` e `RankingLevel`. |
+| GET | `/api/leaderboards/{name}?count=10` | Ranking V2 público. Aceita `RankingMatches`, `RankingEliminations`, `RankingWins` e `RankingLevel`. |
 | GET | `/api/leaderboards/{name}/me` | Linha do jogador autenticado no ranking V2. |
 | GET | `/api/profiles/me/progression` | Totais de progressão usados pela UI de perfil. |
+| POST | `/api/profiles/me/presentation` | Sincroniza apelido e avatar públicos sem aceitar qualquer alteração de XP ou placar. |
 | GET | `/api/friends` | Lista de amigos do jogador autenticado. |
 | GET | `/api/friends/requests` | Solicitações recebidas e enviadas. |
 | POST | `/api/friends/request` | Cria solicitação por apelido ou PlayFab ID. |
@@ -63,4 +64,4 @@ Após publicar, configure a URL de recuperação de senha do PlayFab como:
 
 ## Estado atual
 
-Ranking V2, progressão, amizades e recuperação de senha já estão hospedados neste projeto. A statistic `PlayerPerformance` é multicoluna e usa a ordem fixa `Matches`, `Wins`, `Eliminations`, `Level`; cada leaderboard aponta para sua coluna correspondente. A importação/loja Economy V2 está intencionalmente pausada até a definição final do catálogo de acessórios. O cliente Unity não recebe nem armazena a Secret Key do PlayFab.
+Ranking V2, progressão, amizades e recuperação de senha já estão hospedados neste projeto. A statistic `PlayerPerformance` é multicoluna e usa a ordem fixa `Matches`, `Wins`, `Eliminations`, `Level`; cada leaderboard aponta para sua coluna correspondente. A conclusão idempotente de uma partida grava também XP, nível, tempo acumulado, apelido e avatar em metadata. Perfil/avatares podem atualizar somente os seus próprios metadados públicos por `/api/profiles/me/presentation`; os placares continuam sendo exclusivos do servidor de partidas. A importação/loja Economy V2 está intencionalmente pausada até a definição final do catálogo de acessórios. O cliente Unity não recebe nem armazena a Secret Key do PlayFab.
