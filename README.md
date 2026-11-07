@@ -15,11 +15,12 @@ Backend do Capivarada hospedado no Azure Functions. Este repositório substitui 
 | GET | `/api/leaderboards/{name}/me` | Linha do jogador autenticado no ranking V2. |
 | GET | `/api/profiles/me/progression` | Totais de progressão usados pela UI de perfil. |
 | POST | `/api/profiles/me/presentation` | Sincroniza apelido e avatar públicos sem aceitar qualquer alteração de XP ou placar. |
+| POST | `/api/matches/join-token` | Emite uma prova curta, opaca e vinculada a uma partida para o cliente autenticado repassar ao servidor dedicado. |
 | GET | `/api/friends` | Lista de amigos do jogador autenticado. |
 | GET | `/api/friends/requests` | Solicitações recebidas e enviadas. |
 | POST | `/api/friends/request` | Cria solicitação por apelido ou PlayFab ID. |
 | POST | `/api/friends/accept`, `/reject`, `/cancel`, `/remove` | Gerencia uma solicitação ou amizade. |
-| POST | `/api/matches/settle` | Atualiza estatísticas e progressão. Exclusivo para o futuro servidor de partida. |
+| POST | `/api/matches/settle` | Atualiza estatísticas e progressão. Exclusivo para o servidor dedicado de partida; exige uma prova válida de entrada por participante. |
 
 ## Autenticação dos endpoints do jogo
 
@@ -54,9 +55,10 @@ No Function App `capivarada-functions-dev`, em **Configurações > Variáveis de
 | `LEADERBOARD_WINS` | `RankingWins` |
 | `LEADERBOARD_LEVEL` | `RankingLevel` |
 | `CAPIVARADA_MATCH_SERVER_SECRET` | Segredo longo, exclusivo do futuro servidor de partidas. |
+| `CAPIVARADA_MATCH_TOKEN_SECRET` | Segredo longo e diferente, usado somente pelo Function App para assinar e validar os tokens curtos de entrada de partida. |
 | `STATISTIC_PLAYER_PERFORMANCE` | `PlayerPerformance` |
 
-O endpoint `/api/matches/settle` exige o cabeçalho `X-Capivarada-Match-Secret` com esse segredo. Ele **não** deve ser chamado pela Unity enquanto não existir um servidor de partidas confiável.
+O endpoint `/api/matches/settle` exige o cabeçalho `X-Capivarada-Match-Secret` com esse segredo. Cada participante também deve apresentar um `joinToken` emitido por `/api/matches/join-token` para aquele mesmo `matchId`. A Unity recebe apenas esse token opaco de curta duração; ela nunca recebe a chave de servidor nem a Secret Key do PlayFab.
 
 Após publicar, configure a URL de recuperação de senha do PlayFab como:
 
@@ -64,4 +66,4 @@ Após publicar, configure a URL de recuperação de senha do PlayFab como:
 
 ## Estado atual
 
-Ranking V2, progressão, amizades e recuperação de senha já estão hospedados neste projeto. A statistic `PlayerPerformance` é multicoluna e usa a ordem fixa `Matches`, `Wins`, `Eliminations`, `Level`; cada leaderboard aponta para sua coluna correspondente. A conclusão idempotente de uma partida grava também XP, nível, tempo acumulado, apelido e avatar em metadata. Perfil/avatares podem atualizar somente os seus próprios metadados públicos por `/api/profiles/me/presentation`; os placares continuam sendo exclusivos do servidor de partidas. A importação/loja Economy V2 está intencionalmente pausada até a definição final do catálogo de acessórios. O cliente Unity não recebe nem armazena a Secret Key do PlayFab.
+Ranking V2, progressão, amizades e recuperação de senha já estão hospedados neste projeto. A statistic `PlayerPerformance` é multicoluna e usa a ordem fixa `Matches`, `Wins`, `Eliminations`, `Level`; cada leaderboard aponta para sua coluna correspondente. A conclusão idempotente de uma partida grava também XP, nível, tempo acumulado, apelido e avatar em metadata. Perfil/avatares podem atualizar somente os seus próprios metadados públicos por `/api/profiles/me/presentation`; os placares continuam sendo exclusivos do servidor de partidas. A importação/loja Economy V2 está intencionalmente pausada até a definição final do catálogo de acessórios. O cliente Unity não recebe nem armazena a Secret Key do PlayFab ou o segredo do servidor de partidas.

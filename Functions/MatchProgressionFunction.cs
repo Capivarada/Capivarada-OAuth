@@ -14,10 +14,11 @@ public sealed class MatchProgressionFunction
     private readonly CapivaradaOptions options;
     private readonly IConfiguration configuration;
     private readonly MatchSettlementReceiptService receipts;
+    private readonly MatchJoinTokenService joinTokens;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
 
-    public MatchProgressionFunction(PlayFabTitleEntityClient playFab, CapivaradaOptions options, IConfiguration configuration, MatchSettlementReceiptService receipts)
-    { this.playFab = playFab; this.options = options; this.configuration = configuration; this.receipts = receipts; }
+    public MatchProgressionFunction(PlayFabTitleEntityClient playFab, CapivaradaOptions options, IConfiguration configuration, MatchSettlementReceiptService receipts, MatchJoinTokenService joinTokens)
+    { this.playFab = playFab; this.options = options; this.configuration = configuration; this.receipts = receipts; this.joinTokens = joinTokens; }
 
     [Function("SettleMatchProgression")]
     public async Task<HttpResponseData> Settle([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "matches/settle")] HttpRequestData request)
@@ -35,7 +36,7 @@ public sealed class MatchProgressionFunction
         List<object> outcomes = new();
         foreach (MatchParticipant player in batch.Participants)
         {
-            if (!Eligible(player)) { outcomes.Add(new { player.EntityId, settled = false, reason = player.IsBot ? "bot" : "notEligible" }); continue; }
+            if (!Eligible(player, batch.MatchId)) { outcomes.Add(new { player.EntityId, settled = false, reason = player.IsBot ? "bot" : "notEligible" }); continue; }
             if (!await receipts.TryStartAsync(batch.MatchId, player.EntityId, request.FunctionContext.CancellationToken)) { outcomes.Add(new { player.EntityId, settled = false, reason = "alreadySettled" }); continue; }
             try
             {
@@ -70,7 +71,9 @@ public sealed class MatchProgressionFunction
 
     private const int ExperiencePerLevel = 1500;
 
-    private static bool Eligible(MatchParticipant player) => !player.IsBot && player.RewardEligible && !string.IsNullOrWhiteSpace(player.EntityId) && player.EntityType == "title_player_account";
+    private bool Eligible(MatchParticipant player, string matchId) =>
+        !player.IsBot && player.RewardEligible && !string.IsNullOrWhiteSpace(player.EntityId) &&
+        player.EntityType == "title_player_account" && joinTokens.TryValidate(player.JoinToken, player.EntityId, matchId);
 
     // Mirrors the validated legacy progression formula, but the calculation now
     // exists only in the trusted settlement endpoint.
@@ -116,7 +119,7 @@ public sealed class MatchProgressionFunction
     private static async Task<HttpResponseData> Reply(HttpRequestData request, HttpStatusCode status, object body) { HttpResponseData response = request.CreateResponse(status); response.Headers.Add("Content-Type", "application/json; charset=utf-8"); await response.WriteStringAsync(JsonSerializer.Serialize(body, JsonOptions)); return response; }
 
     private sealed class MatchSettlementBatch { public string MatchId { get; set; } = string.Empty; public int DurationSeconds { get; set; } public List<MatchParticipant> Participants { get; set; } = new(); }
-    private sealed class MatchParticipant { public string EntityId { get; set; } = string.Empty; public string EntityType { get; set; } = "title_player_account"; public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Eliminations { get; set; } public int RoundsSurvived { get; set; } public int Placement { get; set; } public bool IsBot { get; set; } public bool RewardEligible { get; set; } }
+    private sealed class MatchParticipant { public string EntityId { get; set; } = string.Empty; public string EntityType { get; set; } = "title_player_account"; public string JoinToken { get; set; } = string.Empty; public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Eliminations { get; set; } public int RoundsSurvived { get; set; } public int Placement { get; set; } public bool IsBot { get; set; } public bool RewardEligible { get; set; } }
     private sealed class PlayerTotals { public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } = 1; public int Experience { get; set; } public int ExperienceToNext { get; set; } = ExperiencePerLevel; public int TotalExperience { get; set; } public int PlayTimeSeconds { get; set; } }
     private readonly record struct ProgressionAward(int Earned);
 }

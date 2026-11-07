@@ -16,6 +16,7 @@ public static class Program
                 services.AddSingleton<PlayFabEntityClient>();
                 services.AddSingleton<PlayFabTitleEntityClient>();
                 services.AddSingleton<PlayerSessionService>();
+                services.AddSingleton<MatchJoinTokenService>();
                 services.AddSingleton<NicknameIndexService>();
                 services.AddSingleton<MatchSettlementReceiptService>();
                 services.AddSingleton<PageTemplateService>();
