@@ -41,6 +41,24 @@ public sealed class PlayFabServerClient
     public Task SaveFriendStateAsync(string playerId, FriendRequestState state, CancellationToken cancellationToken = default) =>
         CallAsync("UpdateUserInternalData", new { PlayFabId = playerId, Data = new Dictionary<string, string> { [FriendRequestStore.DataKey] = JsonSerializer.Serialize(state, Json) } }, cancellationToken);
 
+    /// <summary>Stores server-owned social state. Never expose these internal-data keys to a game client.</summary>
+    public async Task<T> GetInternalStateAsync<T>(string playerId, string key, Func<T> fallback, CancellationToken cancellationToken = default)
+    {
+        JsonElement data = await CallAsync("GetUserInternalData", new { PlayFabId = playerId, Keys = new[] { key } }, cancellationToken);
+        if (!data.TryGetProperty("Data", out JsonElement values) || !values.TryGetProperty(key, out JsonElement value)
+            || !value.TryGetProperty("Value", out JsonElement raw) || string.IsNullOrWhiteSpace(raw.GetString()))
+            return fallback();
+
+        try { return JsonSerializer.Deserialize<T>(raw.GetString()!, Json) ?? fallback(); }
+        catch (JsonException) { return fallback(); }
+    }
+
+    public Task SaveInternalStateAsync<T>(string playerId, string key, T state, CancellationToken cancellationToken = default) =>
+        CallAsync("UpdateUserInternalData", new { PlayFabId = playerId, Data = new Dictionary<string, string> { [key] = JsonSerializer.Serialize(state, Json) } }, cancellationToken);
+
+    public Task RemoveInternalStateAsync(string playerId, string key, CancellationToken cancellationToken = default) =>
+        CallAsync("UpdateUserInternalData", new { PlayFabId = playerId, KeysToRemove = new[] { key } }, cancellationToken);
+
     public Task AddFriendAsync(string playerId, string friendId, CancellationToken cancellationToken = default) =>
         CallAsync("AddFriend", new { PlayFabId = playerId, FriendPlayFabId = friendId }, cancellationToken);
     public Task RemoveFriendAsync(string playerId, string friendId, CancellationToken cancellationToken = default) =>
