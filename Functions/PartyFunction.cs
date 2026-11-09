@@ -50,18 +50,19 @@ public sealed class PartyFunction : AuthenticatedFunction
         if (string.IsNullOrWhiteSpace(input?.PlayerId)) return await Bad(request, "ID do amigo ausente.");
         try
         {
-            string leaderId = session!.Value.PlayFabId;
-            if (string.Equals(leaderId, input.PlayerId, StringComparison.Ordinal)) return await Bad(request, "Você não pode convidar a si mesmo.");
-            PartyRecord party = await RequireLeaderParty(leaderId);
+            string inviterId = session!.Value.PlayFabId;
+            if (string.Equals(inviterId, input.PlayerId, StringComparison.Ordinal)) return await Bad(request, "Você não pode convidar a si mesmo.");
+            PartyRecord party = await RequireMemberParty(inviterId);
             if (party.Members.Count >= PartyStore.MaxMembers) return await Bad(request, "O grupo já está cheio.");
-            if (!await playFab.AreFriendsAsync(leaderId, input.PlayerId)) return await Bad(request, "Apenas amigos podem ser convidados para o grupo.");
+            if (!await playFab.AreFriendsAsync(inviterId, input.PlayerId)) return await Bad(request, "Apenas amigos podem ser convidados para o grupo.");
             if (!string.IsNullOrWhiteSpace((await Membership(input.PlayerId)).PartyId)) return await Bad(request, "Este jogador já está em outro grupo.");
-            PartyInviteState own = await Invites(leaderId);
+            PartyInviteState own = await Invites(inviterId);
             if (own.Outgoing.Exists(invite => invite.TargetPlayerId == input.PlayerId && invite.PartyId == party.PartyId)) return await Bad(request, "Este amigo já recebeu um convite.");
             PartyInviteState target = await Invites(input.PlayerId);
-            PartyInviteRecord invite = new PartyInviteRecord { PartyId = party.PartyId, LeaderPlayerId = leaderId, SenderPlayerId = leaderId, TargetPlayerId = input.PlayerId };
+            if (target.Incoming.Exists(invite => invite.TargetPlayerId == input.PlayerId && invite.PartyId == party.PartyId)) return await Bad(request, "Este amigo já recebeu um convite para este grupo.");
+            PartyInviteRecord invite = new PartyInviteRecord { PartyId = party.PartyId, LeaderPlayerId = party.LeaderPlayerId, SenderPlayerId = inviterId, TargetPlayerId = input.PlayerId };
             own.Outgoing.Add(invite); target.Incoming.Add(invite);
-            await SaveInvites(leaderId, own); await SaveInvites(input.PlayerId, target);
+            await SaveInvites(inviterId, own); await SaveInvites(input.PlayerId, target);
             return await Ok(request, new { inviteId = invite.InviteId });
         }
         catch (InvalidOperationException exception) { return await Bad(request, exception.Message); }
@@ -181,7 +182,7 @@ public sealed class PartyFunction : AuthenticatedFunction
         catch (Exception exception) { return await Fail(request, exception); }
     }
 
-    private async Task<PartyRecord> RequireLeaderParty(string playerId)
+    private async Task<PartyRecord> RequireMemberParty(string playerId)
     {
         PartyMembership membership = await Membership(playerId);
         if (string.IsNullOrWhiteSpace(membership.PartyId))
@@ -192,7 +193,7 @@ public sealed class PartyFunction : AuthenticatedFunction
             return created;
         }
         PartyRecord party = await Party(membership.LeaderPlayerId);
-        if (party.LeaderPlayerId != playerId) throw new InvalidOperationException("Somente o líder pode convidar amigos.");
+        if (!PartyStore.IsMember(party, playerId)) throw new InvalidOperationException("Você não pertence a este grupo.");
         return party;
     }
 
