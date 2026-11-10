@@ -14,6 +14,10 @@ public sealed class CapivaradaOptions
     /// Eliminations, Level, matching the PlayFab definition.
     /// </summary>
     public string PlayerPerformanceStatistic { get; init; } = "PlayerPerformance";
+    /// <summary>Server-side PA reward tuning. These never come from Unity.</summary>
+    public int ArenaPointsParticipation { get; init; } = 20;
+    public int ArenaPointsPerElimination { get; init; } = 10;
+    public int ArenaPointsVictoryBonus { get; init; } = 80;
 
     public static CapivaradaOptions From(IConfiguration configuration) => new()
     {
@@ -24,6 +28,12 @@ public sealed class CapivaradaOptions
         EliminationsLeaderboard = configuration["LEADERBOARD_ELIMINATIONS"] ?? "RankingEliminations",
         WinsLeaderboard = configuration["LEADERBOARD_WINS"] ?? "RankingWins",
         LevelLeaderboard = configuration["LEADERBOARD_LEVEL"] ?? "RankingLevel"
-        ,PlayerPerformanceStatistic = configuration["STATISTIC_PLAYER_PERFORMANCE"] ?? "PlayerPerformance"
+        ,PlayerPerformanceStatistic = configuration["STATISTIC_PLAYER_PERFORMANCE"] ?? "PlayerPerformance",
+        ArenaPointsParticipation = ReadNonNegative(configuration, "CAPIVARADA_PA_PARTICIPATION", 20),
+        ArenaPointsPerElimination = ReadNonNegative(configuration, "CAPIVARADA_PA_PER_ELIMINATION", 10),
+        ArenaPointsVictoryBonus = ReadNonNegative(configuration, "CAPIVARADA_PA_VICTORY_BONUS", 80)
     };
+
+    private static int ReadNonNegative(IConfiguration configuration, string key, int fallback) =>
+        int.TryParse(configuration[key], out int value) ? Math.Max(0, value) : fallback;
 }

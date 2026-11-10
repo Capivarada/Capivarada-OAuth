@@ -56,8 +56,11 @@ public sealed class MatchProgressionFunction
                 totals.Experience = totals.TotalExperience % ExperiencePerLevel;
                 totals.ExperienceToNext = ExperiencePerLevel;
                 await WriteTotals(batch.MatchId + ":" + player.EntityId, player.EntityId, player.EntityType, totals, request.FunctionContext.CancellationToken);
+                int earnedPoints = ArenaPoints(player);
+                if (earnedPoints > 0)
+                    await GrantArenaPoints(batch.MatchId, player.EntityId, player.EntityType, earnedPoints, request.FunctionContext.CancellationToken);
                 await receipts.CompleteAsync(batch.MatchId, player.EntityId, request.FunctionContext.CancellationToken);
-                outcomes.Add(new { player.EntityId, settled = true, totals.Matches, totals.Eliminations, totals.Wins, totals.Level, totals.Experience, totals.ExperienceToNext, totals.PlayTimeSeconds, xpEarned = award.Earned });
+                outcomes.Add(new { player.EntityId, settled = true, totals.Matches, totals.Eliminations, totals.Wins, totals.Level, totals.Experience, totals.ExperienceToNext, totals.PlayTimeSeconds, xpEarned = award.Earned, arenaPointsEarned = earnedPoints });
             }
             catch (Exception exception)
             {
@@ -86,6 +89,10 @@ public sealed class MatchProgressionFunction
         return new ProgressionAward(placementExperience + eliminationsExperience + roundsExperience);
     }
 
+    private int ArenaPoints(MatchParticipant player) =>
+        options.ArenaPointsParticipation + Math.Max(0, player.Eliminations) * options.ArenaPointsPerElimination +
+        (player.Placement == 1 ? options.ArenaPointsVictoryBonus : 0);
+
     private async Task WriteTotals(string transactionId, string entityId, string entityType, PlayerTotals totals, CancellationToken token)
     {
         await playFab.CallAsync("Statistic", "UpdateStatistics", new
@@ -94,6 +101,18 @@ public sealed class MatchProgressionFunction
             Statistics = new object[] { new { Name = options.PlayerPerformanceStatistic, Scores = new[] { totals.Matches.ToString(), totals.Wins.ToString(), totals.Eliminations.ToString(), totals.Level.ToString() }, Metadata = JsonSerializer.Serialize(totals, JsonOptions) } }
         }, token);
     }
+
+    private Task GrantArenaPoints(string matchId, string entityId, string entityType, int amount, CancellationToken token) =>
+        playFab.CallAsync("Inventory", "ExecuteInventoryOperations", new
+        {
+            Entity = new { Id = entityId, Type = entityType },
+            CollectionId = "default",
+            IdempotencyId = $"{matchId}:{entityId}:pa",
+            Operations = new object[]
+            {
+                new { Add = new { Item = new { Id = options.CurrencyId }, Amount = amount } }
+            }
+        }, token);
 
     private async Task<PlayerTotals> ReadTotals(string entityId, string entityType)
     {
