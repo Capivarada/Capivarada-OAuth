@@ -7,9 +7,14 @@ using Microsoft.Azure.Functions.Worker.Http;
 public sealed class MatchJoinTokenFunction : AuthenticatedFunction
 {
     private readonly MatchJoinTokenService tokens;
+    private readonly MatchAllocationStore allocations;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
 
-    public MatchJoinTokenFunction(PlayerSessionService sessions, MatchJoinTokenService tokens) : base(sessions) => this.tokens = tokens;
+    public MatchJoinTokenFunction(PlayerSessionService sessions, MatchJoinTokenService tokens, MatchAllocationStore allocations) : base(sessions)
+    {
+        this.tokens = tokens;
+        this.allocations = allocations;
+    }
 
     [Function("CreateMatchJoinToken")]
     public async Task<HttpResponseData> Create([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "matches/join-token")] HttpRequestData request)
@@ -21,6 +26,8 @@ public sealed class MatchJoinTokenFunction : AuthenticatedFunction
         MatchJoinRequest? body = await JsonSerializer.DeserializeAsync<MatchJoinRequest>(request.Body, Json);
         if (body == null || string.IsNullOrWhiteSpace(body.MatchId) || body.MatchId.Length > 128)
             return await Reply(request, HttpStatusCode.BadRequest, new { error = "Identificador de partida inválido." });
+        if (!await allocations.ContainsAsync(body.MatchId.Trim(), session.Value.PlayFabId, request.FunctionContext.CancellationToken))
+            return await Reply(request, HttpStatusCode.Forbidden, new { error = "Você não está autorizado a entrar nesta partida." });
 
         string token = tokens.Create(session.Value.PlayFabId, body.MatchId.Trim(), TimeSpan.FromMinutes(10));
         return await Reply(request, HttpStatusCode.OK, new { token, expiresInSeconds = 600 });
