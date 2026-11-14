@@ -62,6 +62,19 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
             if (!string.IsNullOrWhiteSpace(stored.TicketId))
                 return await StatusReply(request, session.Value.PlayFabId, party, stored);
 
+            // A closed group already fills the arena. PlayFab cannot accept an
+            // eight-player ticket for an eight-player queue, so allocate its MPS
+            // session directly and keep the same signed-token delivery path.
+            if (party.Members.Count == MaxMatchPlayers)
+            {
+                PartyMatchmakingTicket direct = await AllocateFullPartyAsync(
+                    party, request.FunctionContext.CancellationToken);
+                await SaveTicketAsync(party.LeaderPlayerId, direct,
+                    request.FunctionContext.CancellationToken);
+                return await StatusReply(request, session.Value.PlayFabId,
+                    party, direct);
+            }
+
             PartyMatchmakingTicket ticket = await CreateTicketAsync(party, FullQueueName(), "full", SearchWindow, request.FunctionContext.CancellationToken);
             await SaveTicketAsync(party.LeaderPlayerId, ticket, request.FunctionContext.CancellationToken);
             return await Reply(request, HttpStatusCode.OK, Searching(ticket));
@@ -118,6 +131,14 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
             PartyMatchmakingTicket ticket = await LoadTicketAsync(party.LeaderPlayerId);
             if (!string.IsNullOrWhiteSpace(ticket.TicketId))
             {
+                if (ticket.Stage == "direct")
+                {
+                    return await Reply(request, HttpStatusCode.Conflict, new
+                    {
+                        error = "A partida do grupo completo já foi alocada e não pode mais ser cancelada."
+                    });
+                }
+
                 try
                 {
                     await multiplayer.CallAsync("Match", "CancelMatchmakingTicket", new { QueueName = ticket.QueueName, TicketId = ticket.TicketId }, request.FunctionContext.CancellationToken);
@@ -141,6 +162,24 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
 
     private async Task<HttpResponseData> StatusReply(HttpRequestData request, string playerId, PartyRecord party, PartyMatchmakingTicket ticket)
     {
+        if (ticket.Stage == "direct")
+        {
+            MatchAllocationStore.Session? allocation = await allocations.GetSessionAsync(
+                ticket.TicketId, request.FunctionContext.CancellationToken);
+            if (allocation == null || allocation.ExpiresUtc <= DateTimeOffset.UtcNow)
+            {
+                await ClearTicketAsync(party.LeaderPlayerId,
+                    request.FunctionContext.CancellationToken);
+                return await Reply(request, HttpStatusCode.OK, new
+                {
+                    state = "idle",
+                    error = "A alocação da partida completa expirou."
+                });
+            }
+
+            return await ReplyDirectReadyAsync(request, playerId, allocation);
+        }
+
         JsonElement ticketData = default;
         string status = string.Empty;
         string matchId = string.Empty;
@@ -213,6 +252,64 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         });
     }
 
+    private async Task<PartyMatchmakingTicket> AllocateFullPartyAsync(
+        PartyRecord party, CancellationToken cancellationToken)
+    {
+        if (!tokens.IsConfigured)
+            throw new InvalidOperationException("CAPIVARADA_MATCH_TOKEN_SECRET não foi configurado.");
+
+        string buildId = configuration["CAPIVARADA_MPS_BUILD_ID"] ?? string.Empty;
+        if (!Guid.TryParse(buildId, out _))
+            throw new InvalidOperationException("CAPIVARADA_MPS_BUILD_ID não foi configurado com o Build ID publicado.");
+
+        string matchId = Guid.NewGuid().ToString("D");
+        JsonElement allocation = await multiplayer.CallAsync(
+            "MultiplayerServer", "RequestMultiplayerServer", new
+            {
+                BuildId = buildId,
+                SessionId = matchId,
+                PreferredRegions = new[] { "EastUs" },
+                InitialPlayers = party.Members.Select(member => member.PlayerId).ToArray(),
+                SessionCookie = JsonSerializer.Serialize(new { matchId }, Json)
+            }, cancellationToken);
+
+        string address = ReadString(allocation, "IPV4Address");
+        int port = ReadGamePort(allocation);
+        if (string.IsNullOrWhiteSpace(address) || port <= 0)
+            throw new InvalidOperationException("O PlayFab MPS não retornou endpoint UDP para o grupo completo.");
+
+        string region = ReadString(allocation, "Region");
+        MatchAllocationStore.Session session = new(matchId, address, port,
+            region, DateTimeOffset.UtcNow.Add(JoinLifetime));
+        await allocations.SaveSessionAsync(session, cancellationToken);
+        foreach (PartyMemberRecord member in party.Members)
+            await allocations.AddPlayerAsync(matchId, member.PlayerId,
+                cancellationToken);
+
+        return new PartyMatchmakingTicket
+        {
+            TicketId = matchId,
+            Stage = "direct",
+            ExpiresAtUtc = session.ExpiresUtc.UtcDateTime
+        };
+    }
+
+    private async Task<HttpResponseData> ReplyDirectReadyAsync(
+        HttpRequestData request, string playerId, MatchAllocationStore.Session allocation)
+    {
+        string token = tokens.Create(playerId, allocation.MatchId, JoinLifetime);
+        return await Reply(request, HttpStatusCode.OK, new
+        {
+            state = "ready",
+            matchId = allocation.MatchId,
+            address = allocation.Address,
+            port = allocation.Port,
+            token,
+            region = allocation.Region,
+            photonRegion = ToPhotonRegion(allocation.Region)
+        });
+    }
+
     private async Task<PartyMatchmakingTicket> CreateTicketAsync(PartyRecord party, string queueName, string stage, TimeSpan lifetime, CancellationToken cancellationToken)
     {
         JsonElement result = await multiplayer.CallAsync("Match", "CreateServerMatchmakingTicket", new
@@ -250,7 +347,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
     {
         int count = party.Members.Count;
         if (count < MinPlayers) throw new ArgumentException("É preciso ao menos 2 jogadores para iniciar o pareamento.");
-        if (count > MaxTicketPlayers) throw new ArgumentException("O PlayFab permite tickets de no máximo 7 jogadores em partidas de 8. Divida este grupo antes de procurar partida.");
+        if (count > MaxMatchPlayers) throw new ArgumentException("O grupo não pode ter mais de 8 jogadores.");
         if (party.Members.Any(member => member.PlayerId != party.LeaderPlayerId && !member.Ready))
             throw new ArgumentException("Todos os integrantes do grupo precisam estar prontos.");
     }
