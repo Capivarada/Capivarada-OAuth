@@ -39,12 +39,22 @@ public sealed class PartyInviteState
     public List<PartyInviteRecord> Outgoing { get; set; } = new();
 }
 
+/// <summary>Server-owned state for the single PlayFab ticket created by a party leader.</summary>
+public sealed class PartyMatchmakingTicket
+{
+    public string TicketId { get; set; } = string.Empty;
+    public string QueueName { get; set; } = string.Empty;
+    public string Stage { get; set; } = string.Empty;
+    public DateTime ExpiresAtUtc { get; set; }
+}
+
 public static class PartyStore
 {
     public const int MaxMembers = 8;
     public const string MembershipKey = "CapivaradaPartyMembership";
     public const string PartyKey = "CapivaradaParty";
     public const string InviteKey = "CapivaradaPartyInvites";
+    public const string MatchmakingTicketKey = "CapivaradaPartyMatchmakingTicket";
 
     public static bool IsMember(PartyRecord party, string playerId) => party.Members.Any(member => string.Equals(member.PlayerId, playerId, StringComparison.Ordinal));
     public static PartyMemberRecord? FindMember(PartyRecord party, string playerId) => party.Members.FirstOrDefault(member => string.Equals(member.PlayerId, playerId, StringComparison.Ordinal));
