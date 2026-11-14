@@ -171,7 +171,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
             // complete after the 30-second full-party search. The game server then
             // fills remaining slots with bots.
             await CancelTicketBestEffortAsync(ticket, request.FunctionContext.CancellationToken);
-            PartyMatchmakingTicket fallback = await CreateTicketAsync(party, FallbackQueueName(), "fallback", TimeSpan.FromMinutes(2), request.FunctionContext.CancellationToken);
+            PartyMatchmakingTicket fallback = await CreateTicketAsync(party, FallbackQueueName(), "fallback", SearchWindow, request.FunctionContext.CancellationToken);
             await SaveTicketAsync(party.LeaderPlayerId, fallback, request.FunctionContext.CancellationToken);
             return await Reply(request, HttpStatusCode.OK, Searching(fallback, "fallback"));
         }
