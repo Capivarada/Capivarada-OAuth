@@ -15,10 +15,11 @@ public sealed class MatchProgressionFunction
     private readonly IConfiguration configuration;
     private readonly MatchSettlementReceiptService receipts;
     private readonly MatchJoinTokenService joinTokens;
+    private readonly MatchAllocationStore allocations;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
 
-    public MatchProgressionFunction(PlayFabTitleEntityClient playFab, CapivaradaOptions options, IConfiguration configuration, MatchSettlementReceiptService receipts, MatchJoinTokenService joinTokens)
-    { this.playFab = playFab; this.options = options; this.configuration = configuration; this.receipts = receipts; this.joinTokens = joinTokens; }
+    public MatchProgressionFunction(PlayFabTitleEntityClient playFab, CapivaradaOptions options, IConfiguration configuration, MatchSettlementReceiptService receipts, MatchJoinTokenService joinTokens, MatchAllocationStore allocations)
+    { this.playFab = playFab; this.options = options; this.configuration = configuration; this.receipts = receipts; this.joinTokens = joinTokens; this.allocations = allocations; }
 
     [Function("SettleMatchProgression")]
     public async Task<HttpResponseData> Settle([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "matches/settle")] HttpRequestData request)
@@ -30,7 +31,14 @@ public sealed class MatchProgressionFunction
         MatchSettlementBatch? batch = await JsonSerializer.DeserializeAsync<MatchSettlementBatch>(request.Body, JsonOptions);
         if (batch == null || string.IsNullOrWhiteSpace(batch.MatchId) || batch.Participants == null || batch.Participants.Count is < 1 or > 8 || batch.DurationSeconds is < 0 or > 14400)
             return await Reply(request, HttpStatusCode.BadRequest, new { error = "MatchId e entre um e oito participantes são obrigatórios." });
-        if (batch.Participants.Select(x => x.EntityId).Distinct(StringComparer.Ordinal).Count() != batch.Participants.Count)
+        // Bots have no PlayFab entity. Validate uniqueness only for the human
+        // participants so an arena result can never block every human reward
+        // merely because several bots use an empty identifier.
+        List<MatchParticipant> humanParticipants = batch.Participants
+            .Where(player => !player.IsBot)
+            .ToList();
+        if (humanParticipants.Select(x => x.EntityId)
+                .Distinct(StringComparer.Ordinal).Count() != humanParticipants.Count)
             return await Reply(request, HttpStatusCode.BadRequest, new { error = "A mesma entidade foi enviada mais de uma vez." });
 
         List<object> outcomes = new();
@@ -69,6 +77,9 @@ public sealed class MatchProgressionFunction
                 outcomes.Add(new { player.EntityId, settled = false, reason = "failed" });
             }
         }
+        // A settled match must never be returned by /matches/allocate again.
+        await allocations.CloseSessionAsync(
+            batch.MatchId, request.FunctionContext.CancellationToken);
         return await Reply(request, HttpStatusCode.OK, new { matchId = batch.MatchId, outcomes });
     }
 
