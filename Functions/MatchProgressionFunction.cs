@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 public sealed class MatchProgressionFunction
 {
     private readonly PlayFabTitleEntityClient playFab;
+    private readonly PlayFabServerClient playerData;
     private readonly CapivaradaOptions options;
     private readonly IConfiguration configuration;
     private readonly MatchSettlementReceiptService receipts;
@@ -18,8 +19,8 @@ public sealed class MatchProgressionFunction
     private readonly MatchAllocationStore allocations;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
 
-    public MatchProgressionFunction(PlayFabTitleEntityClient playFab, CapivaradaOptions options, IConfiguration configuration, MatchSettlementReceiptService receipts, MatchJoinTokenService joinTokens, MatchAllocationStore allocations)
-    { this.playFab = playFab; this.options = options; this.configuration = configuration; this.receipts = receipts; this.joinTokens = joinTokens; this.allocations = allocations; }
+    public MatchProgressionFunction(PlayFabTitleEntityClient playFab, PlayFabServerClient playerData, CapivaradaOptions options, IConfiguration configuration, MatchSettlementReceiptService receipts, MatchJoinTokenService joinTokens, MatchAllocationStore allocations)
+    { this.playFab = playFab; this.playerData = playerData; this.options = options; this.configuration = configuration; this.receipts = receipts; this.joinTokens = joinTokens; this.allocations = allocations; }
 
     [Function("SettleMatchProgression")]
     public async Task<HttpResponseData> Settle([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "matches/settle")] HttpRequestData request)
@@ -69,6 +70,7 @@ public sealed class MatchProgressionFunction
                 totals.Experience = totals.TotalExperience % ExperiencePerLevel;
                 totals.ExperienceToNext = ExperiencePerLevel;
                 await WriteTotals(batch.MatchId + ":" + player.EntityId, player.EntityId, player.EntityType, totals, request.FunctionContext.CancellationToken);
+                await WritePublicRecords(player.EntityId, totals, request.FunctionContext.CancellationToken);
                 int earnedPoints = ArenaPoints(player);
                 if (earnedPoints > 0)
                     await GrantArenaPoints(batch.MatchId, player.EntityId, player.EntityType, earnedPoints, request.FunctionContext.CancellationToken);
@@ -132,6 +134,18 @@ public sealed class MatchProgressionFunction
             {
                 new { Add = new { Item = new { Id = options.CurrencyId }, Amount = amount } }
             }
+        }, token);
+
+    private Task WritePublicRecords(string playerId, PlayerTotals totals, CancellationToken token) =>
+        playerData.CallAsync("UpdateUserData", new
+        {
+            PlayFabId = playerId,
+            Data = new Dictionary<string, string>
+            {
+                ["progression"] = JsonSerializer.Serialize(new { level = totals.Level, experience = totals.Experience }, JsonOptions),
+                ["statistics"] = JsonSerializer.Serialize(new { matches = totals.Matches, wins = totals.Wins, eliminations = totals.Eliminations }, JsonOptions)
+            },
+            Permission = "Public"
         }, token);
 
     private async Task<PlayerTotals> ReadTotals(string entityId, string entityType)
