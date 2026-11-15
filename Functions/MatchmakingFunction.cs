@@ -425,7 +425,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         {
             await multiplayer.CallAsync("Match", "CancelMatchmakingTicket", new { QueueName = ticket.QueueName, TicketId = ticket.TicketId }, cancellationToken);
         }
-        catch (InvalidOperationException exception) when (exception.Message.Contains("404", StringComparison.Ordinal))
+        catch (InvalidOperationException exception) when (IsTerminalTicketError(exception))
         {
             // Expired tickets are already gone.
         }
