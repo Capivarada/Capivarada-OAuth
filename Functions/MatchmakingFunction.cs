@@ -337,9 +337,19 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
                 // The queue's EastUS region-selection rule reads this key.
                 Attributes = new
                 {
-                    DataObject = new
+                    // Attribute keys are case-sensitive. JsonContent applies
+                    // camelCase to anonymous-property names, so keep the queue
+                    // path "Latencies" in a dictionary key instead.
+                    DataObject = new Dictionary<string, object>
                     {
-                        Latencies = new[] { new { region = "EastUs", latency = 100 } }
+                        ["Latencies"] = new[]
+                        {
+                            new Dictionary<string, object>
+                            {
+                                ["region"] = "EastUs",
+                                ["latency"] = 100
+                            }
+                        }
                     }
                 }
             }).ToArray()
