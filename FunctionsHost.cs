@@ -13,6 +13,7 @@ public static class Program
                 services.AddSingleton(provider => CapivaradaOptions.From(provider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()));
                 services.AddSingleton<PlayFabAdminClient>();
                 services.AddSingleton<PlayFabServerClient>();
+                services.AddSingleton<EmailTemplateService>();
                 services.AddSingleton<PlayFabEntityClient>();
                 services.AddSingleton<PlayFabTitleEntityClient>();
                 services.AddSingleton<PlayerSessionService>();
@@ -21,6 +22,7 @@ public static class Program
                 services.AddSingleton<NicknameIndexService>();
                 services.AddSingleton<MatchSettlementReceiptService>();
                 services.AddSingleton<PageTemplateService>();
+                services.AddSingleton<AccountDeletionStore>();
             })
             .Build()
             .Run();

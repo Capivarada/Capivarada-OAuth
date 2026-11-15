@@ -1,5 +1,11 @@
 public static class FormData
 {
+    public static async Task<IReadOnlyDictionary<string, string>> ReadAsync(Microsoft.Azure.Functions.Worker.Http.HttpRequestData request, CancellationToken cancellationToken = default)
+    {
+        using StreamReader reader = new(request.Body, leaveOpen: true);
+        return Parse(await reader.ReadToEndAsync(cancellationToken));
+    }
+
     public static IReadOnlyDictionary<string, string> Parse(string value)
     {
         Dictionary<string, string> values = new(StringComparer.Ordinal);

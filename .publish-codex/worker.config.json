@@ -1,0 +1,12 @@
+{
+  "description": {
+    "language": "dotnet-isolated",
+    "extensions": [
+      ".dll"
+    ],
+    "defaultExecutablePath": "dotnet",
+    "defaultWorkerPath": "Capivarada.Functions.dll",
+    "workerIndexing": "true",
+    "canUsePlaceholder": true
+  }
+}

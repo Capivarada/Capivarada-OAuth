@@ -10,6 +10,9 @@ using Microsoft.Azure.Functions.Worker.Http;
 /// </summary>
 public sealed class DedicatedMatchAllocationFunction : AuthenticatedFunction
 {
+    private const int MaximumPlayers = 8;
+    private static readonly TimeSpan ReusableMatchLifetime =
+        TimeSpan.FromMinutes(15);
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
     private readonly PlayFabTitleEntityClient multiplayer;
     private readonly MatchAllocationStore allocations;
@@ -36,10 +39,30 @@ public sealed class DedicatedMatchAllocationFunction : AuthenticatedFunction
 
         AllocateRequest? body = await JsonSerializer.DeserializeAsync<AllocateRequest>(request.Body, Json);
         string[] regions = NormalizeRegions(body?.PreferredRegions);
-        string matchId = Guid.NewGuid().ToString("D");
 
         try
         {
+            // Retrying Play must not consume another StandingBy server. Reuse a
+            // live allocation already assigned to this player, otherwise fill a
+            // live match before requesting another MPS instance.
+            MatchAllocationStore.Session? existing =
+                await allocations.FindForPlayerAsync(
+                    session.Value.PlayFabId,
+                    request.FunctionContext.CancellationToken)
+                ?? await allocations.FindAvailableAsync(
+                    MaximumPlayers,
+                    request.FunctionContext.CancellationToken);
+
+            if (existing != null)
+            {
+                await allocations.AddPlayerAsync(
+                    existing.MatchId, session.Value.PlayFabId,
+                    request.FunctionContext.CancellationToken);
+                return await ReplyWithJoinAsync(
+                    request, existing, session.Value.PlayFabId);
+            }
+
+            string matchId = Guid.NewGuid().ToString("D");
             // InitialPlayers is the first enforcement layer in PlayFab MPS. The
             // Azure allow-list and signed token are checked again at settlement.
             JsonElement allocation = await multiplayer.CallAsync("MultiplayerServer", "RequestMultiplayerServer", new
@@ -56,9 +79,17 @@ public sealed class DedicatedMatchAllocationFunction : AuthenticatedFunction
             if (string.IsNullOrWhiteSpace(address) || port <= 0)
                 throw new InvalidOperationException("O PlayFab MPS não retornou IPV4Address/porta UDP para a sessão.");
 
+            MatchAllocationStore.Session sessionRecord = new(
+                matchId, address, port,
+                allocation.TryGetProperty("Region", out JsonElement region)
+                    ? region.GetString() ?? string.Empty
+                    : string.Empty,
+                DateTimeOffset.UtcNow.Add(ReusableMatchLifetime));
+            await allocations.SaveSessionAsync(
+                sessionRecord, request.FunctionContext.CancellationToken);
             await allocations.AddPlayerAsync(matchId, session.Value.PlayFabId, request.FunctionContext.CancellationToken);
-            string token = tokens.Create(session.Value.PlayFabId, matchId, TimeSpan.FromMinutes(15));
-            return await Reply(request, HttpStatusCode.OK, new { matchId, address, port, token, expiresInSeconds = 900, region = allocation.TryGetProperty("Region", out JsonElement region) ? region.GetString() : string.Empty });
+            return await ReplyWithJoinAsync(
+                request, sessionRecord, session.Value.PlayFabId);
         }
         catch (Exception exception)
         {
@@ -67,16 +98,39 @@ public sealed class DedicatedMatchAllocationFunction : AuthenticatedFunction
         }
     }
 
+    private async Task<HttpResponseData> ReplyWithJoinAsync(
+        HttpRequestData request, MatchAllocationStore.Session session,
+        string playerId)
+    {
+        string token = tokens.Create(playerId, session.MatchId,
+            ReusableMatchLifetime);
+        int expiresInSeconds = (int)Math.Max(1, Math.Min(
+            ReusableMatchLifetime.TotalSeconds,
+            (session.ExpiresUtc - DateTimeOffset.UtcNow).TotalSeconds));
+        return await Reply(request, HttpStatusCode.OK, new
+        {
+            matchId = session.MatchId,
+            address = session.Address,
+            port = session.Port,
+            token,
+            expiresInSeconds,
+            region = session.Region,
+            photonRegion = ToPhotonRegion(session.Region)
+        });
+    }
+
+    private static string? ToPhotonRegion(string playFabRegion) =>
+        playFabRegion.Equals("BrazilSouth",
+            StringComparison.OrdinalIgnoreCase) ? "sa" :
+        playFabRegion.Equals("EastUs",
+            StringComparison.OrdinalIgnoreCase) ? "us" : null;
+
     private static string[] NormalizeRegions(string[]? requested)
     {
-        HashSet<string> accepted = new(StringComparer.OrdinalIgnoreCase) { "BrazilSouth", "EastUs" };
-        List<string> normalized = new();
-        if (requested != null)
-            foreach (string? value in requested)
-                if (!string.IsNullOrWhiteSpace(value) && accepted.Contains(value.Trim()) && !normalized.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase)) normalized.Add(value.Trim());
-        if (normalized.Count == 0) normalized.Add("BrazilSouth");
-        if (!normalized.Contains("EastUs", StringComparer.OrdinalIgnoreCase)) normalized.Add("EastUs");
-        return normalized.ToArray();
+        // The current MPS build exists only in EastUS. Do not submit fallback
+        // regions that the build cannot serve, otherwise allocation behavior is
+        // inconsistent with the Fusion region selected by the client/server.
+        return new[] { "EastUs" };
     }
 
     private static int ReadGamePort(JsonElement allocation)
