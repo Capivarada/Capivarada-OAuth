@@ -42,9 +42,15 @@ public sealed class MatchProgressionFunction
             return await Reply(request, HttpStatusCode.BadRequest, new { error = "A mesma entidade foi enviada mais de uma vez." });
 
         List<object> outcomes = new();
+        bool settlementFailed = false;
         foreach (MatchParticipant player in batch.Participants)
         {
-            if (!Eligible(player, batch.MatchId)) { outcomes.Add(new { player.EntityId, settled = false, reason = player.IsBot ? "bot" : "notEligible" }); continue; }
+            if (!Eligible(player, batch.MatchId))
+            {
+                outcomes.Add(new { player.EntityId, settled = false, reason = player.IsBot ? "bot" : "notEligible" });
+                if (!player.IsBot) settlementFailed = true;
+                continue;
+            }
             if (!await receipts.TryStartAsync(batch.MatchId, player.EntityId, request.FunctionContext.CancellationToken)) { outcomes.Add(new { player.EntityId, settled = false, reason = "alreadySettled" }); continue; }
             try
             {
@@ -74,11 +80,15 @@ public sealed class MatchProgressionFunction
                 Console.Error.WriteLine(exception);
                 await receipts.ReleaseAsync(batch.MatchId, player.EntityId, request.FunctionContext.CancellationToken);
                 outcomes.Add(new { player.EntityId, settled = false, reason = "failed", detail = exception.Message });
+                settlementFailed = true;
             }
         }
         // A settled match must never be returned by /matches/allocate again.
         await allocations.CloseSessionAsync(
             batch.MatchId, request.FunctionContext.CancellationToken);
+        if (settlementFailed)
+            return await Reply(request, HttpStatusCode.UnprocessableEntity,
+                new { error = "Uma ou mais recompensas não foram registradas.", matchId = batch.MatchId, outcomes });
         return await Reply(request, HttpStatusCode.OK, new { matchId = batch.MatchId, outcomes });
     }
 
