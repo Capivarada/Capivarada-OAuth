@@ -98,7 +98,6 @@ public sealed class PublicProfileFunction
                     profile.Level = Math.Max(1, persisted.Level);
                     profile.Experience = Math.Max(0, persisted.Experience);
                     profile.ExperienceToNext = persisted.ExperienceToNext > 0 ? persisted.ExperienceToNext : 1500;
-                    profile.PlayTimeSeconds = Math.Max(0, persisted.PlayTimeSeconds);
                 }
                 catch (JsonException) { }
             }
@@ -128,14 +127,12 @@ public sealed class PublicProfileFunction
         public string PlayerId { get; set; } = string.Empty;
         public string Nickname { get; set; } = "Capivara";
         public string AvatarId { get; set; } = "avatar1";
-        public string EquippedSkinId { get; set; } = string.Empty;
         public int Level { get; set; } = 1;
         public int Experience { get; set; }
         public int ExperienceToNext { get; set; } = 1500;
         public int Matches { get; set; }
         public int Eliminations { get; set; }
         public int Wins { get; set; }
-        public float PlayTimeSeconds { get; set; }
     }
 
     private sealed class ProgressionMetadata
@@ -145,6 +142,5 @@ public sealed class PublicProfileFunction
         public int Level { get; set; } = 1;
         public int Experience { get; set; }
         public int ExperienceToNext { get; set; } = 1500;
-        public int PlayTimeSeconds { get; set; }
     }
 }

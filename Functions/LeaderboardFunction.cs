@@ -17,12 +17,13 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
     {
         if (!Allowed(name)) return await Bad(request, "Leaderboard não autorizado.");
         int count = QueryCount(request.Url);
+        int start = QueryStart(request.Url);
         try
         {
             // This endpoint deliberately exposes only the public leaderboard
             // projection. It never accepts a player-provided result.
-            JsonElement data = await titleLeaderboards.CallAsync("Leaderboard", "GetLeaderboard", new { LeaderboardName = name, PageSize = count });
-            return await Ok(request, new { entries = Map(data, name) });
+            JsonElement data = await titleLeaderboards.CallAsync("Leaderboard", "GetLeaderboard", new { LeaderboardName = name, PageSize = count, StartingPosition = start });
+            return await Ok(request, new { entries = Sort(Map(data, name), name) });
         }
         catch (Exception exception) { Console.Error.WriteLine(exception); return await Fail(request, "Não foi possível carregar o ranking."); }
     }
@@ -35,7 +36,7 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
         try
         {
             JsonElement data = await leaderboards.CallAsync(request, "Leaderboard", "GetLeaderboardAroundEntity", new { LeaderboardName = name, MaxSurroundingEntries = 0 });
-            LeaderboardEntry[] entries = Map(data, name);
+            LeaderboardEntry[] entries = Sort(Map(data, name), name);
             return await Ok(request, new { entry = entries.FirstOrDefault() });
         }
         catch (Exception exception) { Console.Error.WriteLine(exception); return await Fail(request, "Não foi possível carregar sua posição no ranking."); }
@@ -51,6 +52,15 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
         }
         return 10;
     }
+    private static int QueryStart(Uri url)
+    {
+        foreach (string pair in url.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string[] parts = pair.Split('=', 2);
+            if (parts.Length == 2 && string.Equals(parts[0], "start", StringComparison.OrdinalIgnoreCase) && int.TryParse(parts[1], out int value)) return Math.Max(0, value);
+        }
+        return 0;
+    }
     private static LeaderboardEntry[] Map(JsonElement data, string leaderboardName)
     {
         if (!data.TryGetProperty("Rankings", out JsonElement rankings)) return Array.Empty<LeaderboardEntry>();
@@ -58,17 +68,40 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
         foreach (JsonElement source in rankings.EnumerateArray())
         {
             LeaderboardMetadata metadata = ReadMetadata(source);
-            long score = source.TryGetProperty("Scores", out JsonElement scores) ? Score(scores, 0) : 0;
-            if (leaderboardName == "RankingMatches") metadata.Matches = (int)score;
-            else if (leaderboardName == "RankingEliminations") metadata.Eliminations = (int)score;
-            else if (leaderboardName == "RankingWins") metadata.Wins = (int)score;
-            else if (leaderboardName == "RankingLevel") metadata.Level = (int)score;
+            if (source.TryGetProperty("Scores", out JsonElement scores))
+            {
+                metadata.Matches = (int)Score(scores, 0);
+                metadata.Wins = (int)Score(scores, 1);
+                metadata.Eliminations = (int)Score(scores, 2);
+                metadata.Level = Math.Max(1, (int)Score(scores, 3));
+            }
             string id = source.TryGetProperty("Entity", out JsonElement entity) && entity.TryGetProperty("Id", out JsonElement entityId) ? entityId.GetString() ?? string.Empty : string.Empty;
             string displayName = source.TryGetProperty("DisplayName", out JsonElement name) ? name.GetString() ?? metadata.Nickname : metadata.Nickname;
             result.Add(new LeaderboardEntry { PlayerId = id, Nickname = displayName, AvatarId = metadata.AvatarId, Position = source.TryGetProperty("Rank", out JsonElement rank) ? rank.GetInt32() + 1 : 0, Matches = metadata.Matches, Eliminations = metadata.Eliminations, Wins = metadata.Wins, Level = metadata.Level });
         }
         return result.ToArray();
     }
+
+    private static LeaderboardEntry[] Sort(
+        LeaderboardEntry[] entries, string leaderboardName)
+    {
+        IEnumerable<LeaderboardEntry> ordered = entries
+            .OrderByDescending(entry => Value(entry, leaderboardName))
+            .ThenBy(entry => entry.Nickname ?? string.Empty,
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.PlayerId, StringComparer.Ordinal);
+
+        return ordered.Select((entry, index) =>
+        {
+            entry.Position = index + 1;
+            return entry;
+        }).ToArray();
+    }
+
+    private static int Value(LeaderboardEntry entry, string leaderboardName) =>
+        leaderboardName == "RankingEliminations" ? entry.Eliminations :
+        leaderboardName == "RankingWins" ? entry.Wins :
+        leaderboardName == "RankingLevel" ? entry.Level : entry.Matches;
     private static LeaderboardMetadata ReadMetadata(JsonElement source)
     {
         if (!source.TryGetProperty("Metadata", out JsonElement raw) || raw.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(raw.GetString())) return new LeaderboardMetadata();

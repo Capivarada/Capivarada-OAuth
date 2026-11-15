@@ -55,8 +55,7 @@ public sealed class MatchProgressionFunction
                     Eliminations = previous.Eliminations + Math.Max(0, player.Eliminations),
                     Wins = previous.Wins + (player.Placement == 1 ? 1 : 0),
                     Nickname = string.IsNullOrWhiteSpace(player.Nickname) ? previous.Nickname : player.Nickname.Trim(),
-                    AvatarId = string.IsNullOrWhiteSpace(player.AvatarId) ? previous.AvatarId : player.AvatarId.Trim(),
-                    PlayTimeSeconds = previous.PlayTimeSeconds + batch.DurationSeconds
+                    AvatarId = string.IsNullOrWhiteSpace(player.AvatarId) ? previous.AvatarId : player.AvatarId.Trim()
                 };
                 ProgressionAward award = Award(previous, player);
                 totals.TotalExperience = previous.TotalExperience + award.Earned;
@@ -68,13 +67,13 @@ public sealed class MatchProgressionFunction
                 if (earnedPoints > 0)
                     await GrantArenaPoints(batch.MatchId, player.EntityId, player.EntityType, earnedPoints, request.FunctionContext.CancellationToken);
                 await receipts.CompleteAsync(batch.MatchId, player.EntityId, request.FunctionContext.CancellationToken);
-                outcomes.Add(new { player.EntityId, settled = true, totals.Matches, totals.Eliminations, totals.Wins, totals.Level, totals.Experience, totals.ExperienceToNext, totals.PlayTimeSeconds, xpEarned = award.Earned, arenaPointsEarned = earnedPoints });
+                outcomes.Add(new { player.EntityId, settled = true, totals.Matches, totals.Eliminations, totals.Wins, totals.Level, totals.Experience, totals.ExperienceToNext, xpEarned = award.Earned, arenaPointsEarned = earnedPoints });
             }
             catch (Exception exception)
             {
                 Console.Error.WriteLine(exception);
                 await receipts.ReleaseAsync(batch.MatchId, player.EntityId, request.FunctionContext.CancellationToken);
-                outcomes.Add(new { player.EntityId, settled = false, reason = "failed" });
+                outcomes.Add(new { player.EntityId, settled = false, reason = "failed", detail = exception.Message });
             }
         }
         // A settled match must never be returned by /matches/allocate again.
@@ -150,6 +149,6 @@ public sealed class MatchProgressionFunction
 
     private sealed class MatchSettlementBatch { public string MatchId { get; set; } = string.Empty; public int DurationSeconds { get; set; } public List<MatchParticipant> Participants { get; set; } = new(); }
     private sealed class MatchParticipant { public string EntityId { get; set; } = string.Empty; public string EntityType { get; set; } = "title_player_account"; public string JoinToken { get; set; } = string.Empty; public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Eliminations { get; set; } public int RoundsSurvived { get; set; } public int Placement { get; set; } public bool IsBot { get; set; } public bool RewardEligible { get; set; } }
-    private sealed class PlayerTotals { public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } = 1; public int Experience { get; set; } public int ExperienceToNext { get; set; } = ExperiencePerLevel; public int TotalExperience { get; set; } public int PlayTimeSeconds { get; set; } }
+    private sealed class PlayerTotals { public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } = 1; public int Experience { get; set; } public int ExperienceToNext { get; set; } = ExperiencePerLevel; public int TotalExperience { get; set; } }
     private readonly record struct ProgressionAward(int Earned);
 }

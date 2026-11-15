@@ -53,6 +53,5 @@ public sealed class ProfileProgressionFunction : AuthenticatedFunction
         public int Experience { get; set; }
         public int ExperienceToNext { get; set; } = 1500;
         public int TotalExperience { get; set; }
-        public int PlayTimeSeconds { get; set; }
     }
 }

@@ -45,8 +45,13 @@ public sealed class ProfilePresentationFunction : AuthenticatedFunction
                 StatisticNames = new[] { options.PlayerPerformanceStatistic }
             });
 
-            if (!TryRead(data, out string[] scores, out PlayerPerformanceMetadata metadata))
-                return await Reply(request, HttpStatusCode.OK, new { synchronized = false, reason = "noProgressionYet" });
+            bool hasProgression = TryRead(data, out string[] scores,
+                out PlayerPerformanceMetadata metadata);
+            // Every authenticated profile needs a ranking projection, even before
+            // its first match. This creates the zero-score row without allowing
+            // the client to choose any progression value.
+            if (!hasProgression)
+                scores = new[] { "0", "0", "0", "1" };
 
             if (!string.IsNullOrWhiteSpace(input.Nickname)) metadata.Nickname = input.Nickname.Trim();
             if (!string.IsNullOrWhiteSpace(input.AvatarId)) metadata.AvatarId = input.AvatarId.Trim();
@@ -66,7 +71,11 @@ public sealed class ProfilePresentationFunction : AuthenticatedFunction
                 }
             });
 
-            return await Reply(request, HttpStatusCode.OK, new { synchronized = true });
+            return await Reply(request, HttpStatusCode.OK, new
+            {
+                synchronized = true,
+                initialized = !hasProgression
+            });
         }
         catch (Exception exception)
         {
@@ -125,6 +134,5 @@ public sealed class ProfilePresentationFunction : AuthenticatedFunction
         public int Experience { get; set; }
         public int ExperienceToNext { get; set; } = 1500;
         public int TotalExperience { get; set; }
-        public int PlayTimeSeconds { get; set; }
     }
 }
