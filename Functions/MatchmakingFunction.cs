@@ -10,7 +10,7 @@ using Microsoft.Extensions.Configuration;
 /// </summary>
 public sealed class MatchmakingFunction : AuthenticatedFunction
 {
-    private const int MinPlayers = 2;
+    private const int MinPlayers = 1;
     private const int MaxMatchPlayers = 8;
     // PlayFab requires MaxTicketSize to be strictly less than MaxMatchSize.
     private const int MaxTicketPlayers = MaxMatchPlayers - 1;
@@ -206,7 +206,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
 
         if ((expired || terminal) && ticket.Stage == "full")
         {
-            // The fallback queue is MinMatchSize=2 and is the only queue that may
+            // The fallback queue is MinMatchSize=1 and is the only queue that may
             // complete after the 30-second full-party search. The game server then
             // fills remaining slots with bots.
             await CancelTicketBestEffortAsync(ticket, request.FunctionContext.CancellationToken);
@@ -346,7 +346,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
     private void ValidateParty(PartyRecord party)
     {
         int count = party.Members.Count;
-        if (count < MinPlayers) throw new ArgumentException("É preciso ao menos 2 jogadores para iniciar o pareamento.");
+        if (count < MinPlayers) throw new ArgumentException("É preciso ao menos 1 jogador para iniciar o pareamento.");
         if (count > MaxMatchPlayers) throw new ArgumentException("O grupo não pode ter mais de 8 jogadores.");
         if (party.Members.Any(member => member.PlayerId != party.LeaderPlayerId && !member.Ready))
             throw new ArgumentException("Todos os integrantes do grupo precisam estar prontos.");
