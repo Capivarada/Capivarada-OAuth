@@ -54,6 +54,8 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         try
         {
             PartyRecord party = await RequirePartyAsync(session.Value.PlayFabId);
+            await RememberMatchmakingEntityAsync(party, session.Value,
+                request.FunctionContext.CancellationToken);
             if (!string.Equals(party.LeaderPlayerId, session.Value.PlayFabId, StringComparison.Ordinal))
                 return await Reply(request, HttpStatusCode.Forbidden, new { error = "Somente o líder pode iniciar o pareamento." });
 
@@ -101,6 +103,8 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         try
         {
             PartyRecord party = await RequirePartyAsync(session.Value.PlayFabId);
+            await RememberMatchmakingEntityAsync(party, session.Value,
+                request.FunctionContext.CancellationToken);
             PartyMatchmakingTicket ticket = await LoadTicketAsync(party.LeaderPlayerId);
             if (string.IsNullOrWhiteSpace(ticket.TicketId))
                 return await Reply(request, HttpStatusCode.OK, new { state = "idle" });
@@ -329,7 +333,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
             GiveUpAfterSeconds = (int)lifetime.TotalSeconds,
             Members = party.Members.Select(member => new
             {
-                Entity = new { Id = member.PlayerId, Type = "title_player_account" },
+                Entity = new { Id = MatchmakingEntityId(member), Type = MatchmakingEntityType(member) },
                 // The queue's EastUS region-selection rule reads this key.
                 Attributes = new
                 {
@@ -359,6 +363,8 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         int count = party.Members.Count;
         if (count < MinPlayers) throw new ArgumentException("É preciso ao menos 1 jogador para iniciar o pareamento.");
         if (count > MaxMatchPlayers) throw new ArgumentException("O grupo não pode ter mais de 8 jogadores.");
+        if (party.Members.Any(member => string.IsNullOrWhiteSpace(member.MatchmakingEntityId)))
+            throw new ArgumentException("Um integrante ainda não atualizou a identidade PlayFab. Peça para todos abrirem novamente a tela de grupo.");
         if (party.Members.Any(member => member.PlayerId != party.LeaderPlayerId && !member.Ready))
             throw new ArgumentException("Todos os integrantes do grupo precisam estar prontos.");
     }
@@ -371,6 +377,27 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         if (string.IsNullOrWhiteSpace(party.PartyId) || !PartyStore.IsMember(party, playerId)) throw new ArgumentException("Você não pertence a este grupo.");
         return party;
     }
+
+    private async Task RememberMatchmakingEntityAsync(PartyRecord party,
+        PlayerSession session, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(session.EntityId)) return;
+        PartyMemberRecord? member = PartyStore.FindMember(party,
+            session.PlayFabId);
+        if (member == null || string.Equals(member.MatchmakingEntityId,
+                session.EntityId, StringComparison.Ordinal)) return;
+        member.MatchmakingEntityId = session.EntityId;
+        member.MatchmakingEntityType = string.IsNullOrWhiteSpace(session.EntityType)
+            ? "title_player_account" : session.EntityType;
+        await playFab.SaveInternalStateAsync(party.LeaderPlayerId,
+            PartyStore.PartyKey, party, cancellationToken);
+    }
+
+    private static string MatchmakingEntityId(PartyMemberRecord member) =>
+        member.MatchmakingEntityId;
+    private static string MatchmakingEntityType(PartyMemberRecord member) =>
+        string.IsNullOrWhiteSpace(member.MatchmakingEntityType)
+            ? "title_player_account" : member.MatchmakingEntityType;
 
     private Task<PartyMatchmakingTicket> LoadTicketAsync(string leaderId) => playFab.GetInternalStateAsync(leaderId, PartyStore.MatchmakingTicketKey, () => new PartyMatchmakingTicket());
     private Task SaveTicketAsync(string leaderId, PartyMatchmakingTicket ticket, CancellationToken cancellationToken) => playFab.SaveInternalStateAsync(leaderId, PartyStore.MatchmakingTicketKey, ticket, cancellationToken);

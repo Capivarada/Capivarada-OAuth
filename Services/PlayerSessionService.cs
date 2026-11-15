@@ -55,8 +55,17 @@ public sealed class PlayerSessionService
             return null;
         }
 
-        return new PlayerSession(playFabId);
+        string entityId = request.Headers.TryGetValues("X-PlayFab-EntityId", out IEnumerable<string>? entityIds)
+            ? entityIds.FirstOrDefault() ?? string.Empty
+            : string.Empty;
+        string entityType = request.Headers.TryGetValues("X-PlayFab-EntityType", out IEnumerable<string>? entityTypes)
+            ? entityTypes.FirstOrDefault() ?? "title_player_account"
+            : "title_player_account";
+        return new PlayerSession(playFabId, entityId, entityType);
     }
 }
 
-public readonly record struct PlayerSession(string PlayFabId);
+public readonly record struct PlayerSession(
+    string PlayFabId,
+    string EntityId = "",
+    string EntityType = "title_player_account");

@@ -17,8 +17,11 @@ public sealed class PartyFunction : AuthenticatedFunction
         var (session, error) = await RequirePlayerAsync(request); if (error != null) return error;
         try
         {
-            PartyMembership membership = await Membership(session!.Value.PlayFabId);
-            PartySummary? party = await Snapshot(membership);
+            // Every authenticated player owns a one-member party. It becomes
+            // social/chat-active only after a second member joins.
+            PartyRecord partyRecord = await RequireMemberParty(session!.Value.PlayFabId);
+            await RememberMatchmakingEntityAsync(partyRecord, session.Value);
+            PartySummary party = await Snapshot(partyRecord);
             PartyInviteState invites = await Invites(session.Value.PlayFabId);
             return await Ok(request, new { party, incoming = await InviteSummaries(invites.Incoming, true), outgoing = await InviteSummaries(invites.Outgoing, false) });
         }
@@ -34,7 +37,7 @@ public sealed class PartyFunction : AuthenticatedFunction
             PartyMembership existing = await Membership(session!.Value.PlayFabId);
             if (!string.IsNullOrWhiteSpace(existing.PartyId)) return await Bad(request, "Você já está em um grupo.");
             PartyRecord party = new PartyRecord { LeaderPlayerId = session.Value.PlayFabId };
-            party.Members.Add(new PartyMemberRecord { PlayerId = session.Value.PlayFabId, Ready = true });
+            party.Members.Add(NewMember(session.Value, true));
             await SaveParty(party);
             await SaveMembership(session.Value.PlayFabId, party);
             return await Ok(request, new { party = await Snapshot(party) });
@@ -83,7 +86,7 @@ public sealed class PartyFunction : AuthenticatedFunction
             if (invite == null) return await Bad(request, "Convite não encontrado ou expirado.");
             PartyRecord party = await Party(invite.LeaderPlayerId);
             if (party.PartyId != invite.PartyId || party.Members.Count >= PartyStore.MaxMembers) return await Bad(request, "Este grupo não está mais disponível.");
-            party.Members.Add(new PartyMemberRecord { PlayerId = playerId, Ready = false });
+            party.Members.Add(NewMember(session.Value, false));
             await SaveParty(party); await SaveMembership(playerId, party);
             PartyInviteState sender = await Invites(invite.SenderPlayerId);
             PartyStore.RemoveInvite(target, invite.InviteId); PartyStore.RemoveInvite(sender, invite.InviteId);
@@ -109,6 +112,7 @@ public sealed class PartyFunction : AuthenticatedFunction
             PartyRecord party = await Party(membership.LeaderPlayerId);
             PartyMemberRecord? member = PartyStore.FindMember(party, session.Value.PlayFabId);
             if (member == null) return await Bad(request, "Você não pertence a este grupo.");
+            await RememberMatchmakingEntityAsync(party, session.Value);
             // The leader starts the search; readiness belongs to invited members.
             if (session.Value.PlayFabId != party.LeaderPlayerId) member.Ready = input?.Ready ?? false;
             await SaveParty(party);
@@ -206,6 +210,26 @@ public sealed class PartyFunction : AuthenticatedFunction
         return party;
     }
     private Task SaveParty(PartyRecord party) => playFab.SaveInternalStateAsync(party.LeaderPlayerId, PartyStore.PartyKey, party);
+
+    private static PartyMemberRecord NewMember(PlayerSession session, bool ready) => new()
+    {
+        PlayerId = session.PlayFabId,
+        MatchmakingEntityId = session.EntityId,
+        MatchmakingEntityType = string.IsNullOrWhiteSpace(session.EntityType)
+            ? "title_player_account" : session.EntityType,
+        Ready = ready
+    };
+
+    private async Task RememberMatchmakingEntityAsync(PartyRecord party, PlayerSession session)
+    {
+        if (string.IsNullOrWhiteSpace(session.EntityId)) return;
+        PartyMemberRecord? member = PartyStore.FindMember(party, session.PlayFabId);
+        if (member == null || string.Equals(member.MatchmakingEntityId, session.EntityId, StringComparison.Ordinal)) return;
+        member.MatchmakingEntityId = session.EntityId;
+        member.MatchmakingEntityType = string.IsNullOrWhiteSpace(session.EntityType)
+            ? "title_player_account" : session.EntityType;
+        await SaveParty(party);
+    }
     private Task SaveMembership(string playerId, PartyRecord party) => playFab.SaveInternalStateAsync(playerId, PartyStore.MembershipKey, new PartyMembership { PartyId = party.PartyId, LeaderPlayerId = party.LeaderPlayerId });
     private Task SaveInvites(string playerId, PartyInviteState invites) => playFab.SaveInternalStateAsync(playerId, PartyStore.InviteKey, invites);
 

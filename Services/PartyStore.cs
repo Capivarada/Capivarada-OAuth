@@ -11,6 +11,9 @@ public sealed class PartyMembership
 public sealed class PartyMemberRecord
 {
     public string PlayerId { get; set; } = string.Empty;
+    /// <summary>Title-player entity ID required by PlayFab Match APIs.</summary>
+    public string MatchmakingEntityId { get; set; } = string.Empty;
+    public string MatchmakingEntityType { get; set; } = "title_player_account";
     public bool Ready { get; set; }
     public DateTime JoinedAtUtc { get; set; } = DateTime.UtcNow;
 }
