@@ -147,7 +147,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
                 {
                     await multiplayer.CallAsync("Match", "CancelMatchmakingTicket", new { QueueName = ticket.QueueName, TicketId = ticket.TicketId }, request.FunctionContext.CancellationToken);
                 }
-                catch (InvalidOperationException exception) when (exception.Message.Contains("404", StringComparison.Ordinal) || exception.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                catch (InvalidOperationException exception) when (IsTerminalTicketError(exception))
                 {
                     // An expired or already-matched ticket is already terminal.
                 }
@@ -194,7 +194,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
             status = ReadString(ticketData, "Status");
             matchId = ReadString(ticketData, "MatchId");
         }
-        catch (InvalidOperationException exception) when (exception.Message.Contains("404", StringComparison.Ordinal))
+        catch (InvalidOperationException exception) when (IsTerminalTicketError(exception))
         {
             // PlayFab removes an expired ticket instead of returning a terminal state.
             ticketMissing = true;
@@ -408,6 +408,12 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
     private static string MatchmakingEntityType(PartyMemberRecord member) =>
         string.IsNullOrWhiteSpace(member.MatchmakingEntityType)
             ? "title_player_account" : member.MatchmakingEntityType;
+
+    private static bool IsTerminalTicketError(InvalidOperationException exception) =>
+        exception.Message.Contains("404", StringComparison.Ordinal) ||
+        exception.Message.Contains("MatchmakingTicketAlreadyCompleted", StringComparison.Ordinal) ||
+        exception.Message.Contains("TicketAlreadyCompleted", StringComparison.Ordinal) ||
+        exception.Message.Contains("not found", StringComparison.OrdinalIgnoreCase);
 
     private Task<PartyMatchmakingTicket> LoadTicketAsync(string leaderId) => playFab.GetInternalStateAsync(leaderId, PartyStore.MatchmakingTicketKey, () => new PartyMatchmakingTicket());
     private Task SaveTicketAsync(string leaderId, PartyMatchmakingTicket ticket, CancellationToken cancellationToken) => playFab.SaveInternalStateAsync(leaderId, PartyStore.MatchmakingTicketKey, ticket, cancellationToken);
