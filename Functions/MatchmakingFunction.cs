@@ -67,7 +67,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
             // session directly and keep the same signed-token delivery path.
             if (party.Members.Count == MaxMatchPlayers)
             {
-                PartyMatchmakingTicket direct = await AllocateFullPartyAsync(
+                PartyMatchmakingTicket direct = await AllocateDirectPartyAsync(
                     party, request.FunctionContext.CancellationToken);
                 await SaveTicketAsync(party.LeaderPlayerId, direct,
                     request.FunctionContext.CancellationToken);
@@ -206,10 +206,21 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
 
         if ((expired || terminal) && ticket.Stage == "full")
         {
-            // The fallback queue is MinMatchSize=1 and is the only queue that may
-            // complete after the 30-second full-party search. The game server then
-            // fills remaining slots with bots.
+            // PlayFab queues require MinMatchSize >= 2. A solo ticket waits in
+            // the full queue for 30 seconds, then receives a direct MPS session.
+            // The game server fills the remaining slots with bots.
             await CancelTicketBestEffortAsync(ticket, request.FunctionContext.CancellationToken);
+            if (party.Members.Count == 1)
+            {
+                PartyMatchmakingTicket solo = await AllocateDirectPartyAsync(
+                    party, request.FunctionContext.CancellationToken);
+                await SaveTicketAsync(party.LeaderPlayerId, solo,
+                    request.FunctionContext.CancellationToken);
+                return await StatusReply(request, playerId, party, solo);
+            }
+
+            // Parties with two through seven players can still be combined by
+            // the fallback queue before the MPS server fills missing slots.
             PartyMatchmakingTicket fallback = await CreateTicketAsync(party, FallbackQueueName(), "fallback", SearchWindow, request.FunctionContext.CancellationToken);
             await SaveTicketAsync(party.LeaderPlayerId, fallback, request.FunctionContext.CancellationToken);
             return await Reply(request, HttpStatusCode.OK, Searching(fallback, "fallback"));
@@ -252,7 +263,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         });
     }
 
-    private async Task<PartyMatchmakingTicket> AllocateFullPartyAsync(
+    private async Task<PartyMatchmakingTicket> AllocateDirectPartyAsync(
         PartyRecord party, CancellationToken cancellationToken)
     {
         if (!tokens.IsConfigured)
