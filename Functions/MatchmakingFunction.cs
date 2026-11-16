@@ -69,6 +69,21 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
 
             ValidateParty(party);
             PartyMatchmakingTicket stored = await LoadTicketAsync(party.LeaderPlayerId);
+            // A direct ticket is valid only until its server enters gameplay.
+            // Keeping it after MatchStarted made a later click on Jogar join a
+            // stale arena immediately instead of starting a new search.
+            if (stored.Stage == "direct" && !string.IsNullOrWhiteSpace(stored.TicketId))
+            {
+                MatchAllocationStore.Session? directSession = await allocations.GetSessionAsync(
+                    stored.TicketId, request.FunctionContext.CancellationToken);
+                if (directSession == null || !directSession.IsJoinable ||
+                    directSession.ExpiresUtc <= DateTimeOffset.UtcNow)
+                {
+                    await ClearTicketAsync(party.LeaderPlayerId,
+                        request.FunctionContext.CancellationToken);
+                    stored = new PartyMatchmakingTicket();
+                }
+            }
             if (!string.IsNullOrWhiteSpace(stored.TicketId))
                 return await StatusReply(request, session.Value.PlayFabId, party, stored);
 
