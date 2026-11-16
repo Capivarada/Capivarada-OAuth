@@ -76,9 +76,15 @@ public sealed class MpsCapacityService
     private int ReadPositive(string key, int fallback) => int.TryParse(configuration[key], out int value) ? Math.Max(1, value) : fallback;
     private static JsonElement FindRegion(JsonElement build, string wanted)
     {
-        if (build.TryGetProperty("BuildRegions", out JsonElement regions) && regions.ValueKind == JsonValueKind.Array)
-            foreach (JsonElement region in regions.EnumerateArray())
-                if (string.Equals(Property(region, "Region").GetString(), wanted, StringComparison.OrdinalIgnoreCase)) return region;
+        // GetBuild returns RegionConfigurations (not BuildRegions). Accept the
+        // legacy alias too so an older cached response cannot strand the lobby.
+        if (!(build.TryGetProperty("RegionConfigurations", out JsonElement regions) ||
+              build.TryGetProperty("BuildRegions", out regions)) ||
+            regions.ValueKind != JsonValueKind.Array)
+            return default;
+
+        foreach (JsonElement region in regions.EnumerateArray())
+            if (string.Equals(Property(region, "Region").GetString(), wanted, StringComparison.OrdinalIgnoreCase)) return region;
         return default;
     }
     private static JsonElement Property(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out JsonElement property) ? property : default;
