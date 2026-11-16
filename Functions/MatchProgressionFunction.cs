@@ -64,7 +64,8 @@ public sealed class MatchProgressionFunction
                     Eliminations = previous.Eliminations + Math.Max(0, player.Eliminations),
                     Wins = previous.Wins + (player.Placement == 1 ? 1 : 0),
                     Nickname = string.IsNullOrWhiteSpace(player.Nickname) ? previous.Nickname : player.Nickname.Trim(),
-                    AvatarId = string.IsNullOrWhiteSpace(player.AvatarId) ? previous.AvatarId : player.AvatarId.Trim()
+                    AvatarId = string.IsNullOrWhiteSpace(player.AvatarId) ? previous.AvatarId : player.AvatarId.Trim(),
+                    CreatedAtUtc = previous.CreatedAtUtc
                 };
                 ProgressionAward award = Award(player, rules);
                 totals.TotalExperience = previous.TotalExperience + award.Earned;
@@ -173,6 +174,6 @@ public sealed class MatchProgressionFunction
 
     private sealed class MatchSettlementBatch { public string MatchId { get; set; } = string.Empty; public int DurationSeconds { get; set; } public List<MatchParticipant> Participants { get; set; } = new(); }
     private sealed class MatchParticipant { public string EntityId { get; set; } = string.Empty; public string EntityType { get; set; } = "title_player_account"; public string JoinToken { get; set; } = string.Empty; public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Eliminations { get; set; } public int RoundsSurvived { get; set; } public int Placement { get; set; } public bool IsBot { get; set; } public bool RewardEligible { get; set; } }
-    private sealed class PlayerTotals { public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } = 1; public int Experience { get; set; } public int ExperienceToNext { get; set; } = 1500; public int TotalExperience { get; set; } }
+    private sealed class PlayerTotals { public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public DateTime CreatedAtUtc { get; set; } = DateTime.MaxValue; public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } = 1; public int Experience { get; set; } public int ExperienceToNext { get; set; } = 1500; public int TotalExperience { get; set; } }
     private readonly record struct ProgressionAward(int Earned, int Placement, int Eliminations, int Rounds, int MatchCompletion);
 }

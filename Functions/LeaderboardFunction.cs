@@ -77,7 +77,7 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
             }
             string id = source.TryGetProperty("Entity", out JsonElement entity) && entity.TryGetProperty("Id", out JsonElement entityId) ? entityId.GetString() ?? string.Empty : string.Empty;
             string displayName = source.TryGetProperty("DisplayName", out JsonElement name) ? name.GetString() ?? metadata.Nickname : metadata.Nickname;
-            result.Add(new LeaderboardEntry { PlayerId = id, Nickname = displayName, AvatarId = metadata.AvatarId, Position = source.TryGetProperty("Rank", out JsonElement rank) ? rank.GetInt32() + 1 : 0, Matches = metadata.Matches, Eliminations = metadata.Eliminations, Wins = metadata.Wins, Level = metadata.Level });
+            result.Add(new LeaderboardEntry { PlayerId = id, Nickname = displayName, AvatarId = metadata.AvatarId, CreatedAtUtc = metadata.CreatedAtUtc, Position = source.TryGetProperty("Rank", out JsonElement rank) ? rank.GetInt32() + 1 : 0, Matches = metadata.Matches, Eliminations = metadata.Eliminations, Wins = metadata.Wins, Level = metadata.Level });
         }
         return result.ToArray();
     }
@@ -87,6 +87,7 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
     {
         IEnumerable<LeaderboardEntry> ordered = entries
             .OrderByDescending(entry => Value(entry, leaderboardName))
+            .ThenBy(entry => entry.CreatedAtUtc)
             .ThenBy(entry => entry.Nickname ?? string.Empty,
                 StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => entry.PlayerId, StringComparer.Ordinal);
@@ -119,6 +120,6 @@ public sealed class LeaderboardFunction : AuthenticatedFunction
     private static async Task<HttpResponseData> Ok(HttpRequestData request, object value) { HttpResponseData response = request.CreateResponse(HttpStatusCode.OK); response.Headers.Add("Content-Type", "application/json; charset=utf-8"); await response.WriteStringAsync(JsonSerializer.Serialize(value, Json)); return response; }
     private static async Task<HttpResponseData> Bad(HttpRequestData request, string message) { HttpResponseData response = request.CreateResponse(HttpStatusCode.BadRequest); await response.WriteStringAsync(JsonSerializer.Serialize(new { error = message }, Json)); return response; }
     private static async Task<HttpResponseData> Fail(HttpRequestData request, string message) { HttpResponseData response = request.CreateResponse(HttpStatusCode.InternalServerError); await response.WriteStringAsync(JsonSerializer.Serialize(new { error = message }, Json)); return response; }
-    private sealed class LeaderboardMetadata { public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } = 1; }
-    private sealed class LeaderboardEntry { public string PlayerId { get; set; } = string.Empty; public string Nickname { get; set; } = string.Empty; public string AvatarId { get; set; } = "avatar1"; public int Position { get; set; } public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } }
+    private sealed class LeaderboardMetadata { public string Nickname { get; set; } = "Capivara"; public string AvatarId { get; set; } = "avatar1"; public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } = 1; public DateTime CreatedAtUtc { get; set; } = DateTime.MaxValue; }
+    private sealed class LeaderboardEntry { public string PlayerId { get; set; } = string.Empty; public string Nickname { get; set; } = string.Empty; public string AvatarId { get; set; } = "avatar1"; public DateTime CreatedAtUtc { get; set; } = DateTime.MaxValue; public int Position { get; set; } public int Matches { get; set; } public int Eliminations { get; set; } public int Wins { get; set; } public int Level { get; set; } }
 }

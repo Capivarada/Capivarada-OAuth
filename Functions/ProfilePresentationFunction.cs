@@ -18,12 +18,14 @@ public sealed class ProfilePresentationFunction : AuthenticatedFunction
 
     private readonly PlayFabTitleEntityClient title;
     private readonly CapivaradaOptions options;
+    private readonly PlayFabServerClient players;
 
-    public ProfilePresentationFunction(PlayerSessionService sessions, PlayFabTitleEntityClient title, CapivaradaOptions options)
+    public ProfilePresentationFunction(PlayerSessionService sessions, PlayFabTitleEntityClient title, CapivaradaOptions options, PlayFabServerClient players)
         : base(sessions)
     {
         this.title = title;
         this.options = options;
+        this.players = players;
     }
 
     [Function("SyncLeaderboardPresentation")]
@@ -55,6 +57,8 @@ public sealed class ProfilePresentationFunction : AuthenticatedFunction
 
             if (!string.IsNullOrWhiteSpace(input.Nickname)) metadata.Nickname = input.Nickname.Trim();
             if (!string.IsNullOrWhiteSpace(input.AvatarId)) metadata.AvatarId = input.AvatarId.Trim();
+            if (metadata.CreatedAtUtc == default || metadata.CreatedAtUtc == DateTime.MaxValue)
+                metadata.CreatedAtUtc = await ReadCreatedAtUtcAsync(playerId, request.FunctionContext.CancellationToken);
 
             await title.CallAsync("Statistic", "UpdateStatistics", new
             {
@@ -82,6 +86,14 @@ public sealed class ProfilePresentationFunction : AuthenticatedFunction
             Console.Error.WriteLine(exception);
             return await Reply(request, HttpStatusCode.InternalServerError, new { error = "Falha ao sincronizar a apresentação pública." });
         }
+    }
+
+    private async Task<DateTime> ReadCreatedAtUtcAsync(string playerId, CancellationToken token)
+    {
+        JsonElement account = await players.CallAsync("GetUserAccountInfo", new { PlayFabId = playerId }, token);
+        if (account.TryGetProperty("UserInfo", out JsonElement user) && user.TryGetProperty("Created", out JsonElement created) && created.TryGetDateTime(out DateTime value))
+            return value.ToUniversalTime();
+        return DateTime.MaxValue;
     }
 
     private bool TryRead(JsonElement data, out string[] scores, out PlayerPerformanceMetadata metadata)
@@ -134,5 +146,6 @@ public sealed class ProfilePresentationFunction : AuthenticatedFunction
         public int Experience { get; set; }
         public int ExperienceToNext { get; set; } = 1500;
         public int TotalExperience { get; set; }
+        public DateTime CreatedAtUtc { get; set; } = DateTime.MaxValue;
     }
 }
