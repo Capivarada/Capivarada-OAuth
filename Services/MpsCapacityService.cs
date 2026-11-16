@@ -28,7 +28,7 @@ public sealed class MpsCapacityService
         try
         {
             string buildId = configuration["CAPIVARADA_MPS_BUILD_ID"] ?? string.Empty;
-            if (!Guid.TryParse(buildId, out _)) return new CapacityStatus(false, "unconfigured", 10, 0, 0);
+            if (!Guid.TryParse(buildId, out _)) return new CapacityStatus(false, "unconfigured", 10, 0, 0, 0, 0);
 
             TimeSpan ttl = TimeSpan.FromSeconds(ReadPositive("MPS_PRESENCE_TTL_SECONDS", 90));
             TimeSpan grace = TimeSpan.FromMinutes(ReadPositive("MPS_PRESENCE_GRACE_MINUTES", 20));
@@ -43,6 +43,10 @@ public sealed class MpsCapacityService
             JsonElement region = FindRegion(build, Region());
             int configuredStandby = Number(region, "StandbyServers");
             int configuredMaximum = Number(region, "MaxServers");
+            JsonElement stats = Property(region, "CurrentServerStats");
+            int standingBy = Number(stats, "StandingBy");
+            int propping = Number(stats, "Propping");
+            int active = Number(stats, "Active");
             if (configuredStandby != targetStandby || configuredMaximum != targetMaximum)
             {
                 await multiplayer.CallAsync("MultiplayerServer", "UpdateBuildRegion", new
@@ -55,13 +59,15 @@ public sealed class MpsCapacityService
                         MaxServers = targetMaximum
                     }
                 }, token);
-                return new CapacityStatus(false, targetStandby == 0 ? "offline" : "warming", 5, online, 0);
+                // Configuration propagation is asynchronous. A VM that is
+                // already StandingBy is safe to use immediately, even when
+                // GetBuild still reports the previous target values.
+                bool alreadyReady = targetStandby > 0 && standingBy > 0;
+                return new CapacityStatus(alreadyReady, alreadyReady ? "ready" : targetStandby == 0 ? "offline" : "warming", alreadyReady ? 0 : 5, online, standingBy, propping, active);
             }
 
-            JsonElement stats = Property(region, "CurrentServerStats");
-            int standingBy = Number(stats, "StandingBy");
             bool ready = targetStandby == 0 || standingBy > 0;
-            return new CapacityStatus(ready, ready ? "ready" : "warming", ready ? 0 : 5, online, standingBy);
+            return new CapacityStatus(ready, ready ? "ready" : "warming", ready ? 0 : 5, online, standingBy, propping, active);
         }
         finally { gate.Release(); }
     }
@@ -84,4 +90,4 @@ public sealed class MpsCapacityService
     }
 }
 
-public readonly record struct CapacityStatus(bool Ready, string Status, int RetryAfterSeconds, int OnlinePlayers, int StandingByServers);
+public readonly record struct CapacityStatus(bool Ready, string Status, int RetryAfterSeconds, int OnlinePlayers, int StandingByServers, int ProppingServers, int ActiveServers);

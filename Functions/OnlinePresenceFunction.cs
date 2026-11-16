@@ -35,7 +35,7 @@ public sealed class OnlinePresenceFunction : AuthenticatedFunction
     {
         HttpResponseData response = request.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Content-Type", "application/json; charset=utf-8");
-        await response.WriteStringAsync(JsonSerializer.Serialize(new { ready = status.Ready, status = status.Status, retryAfterSeconds = status.RetryAfterSeconds, onlinePlayers = status.OnlinePlayers, standingByServers = status.StandingByServers }));
+        await response.WriteStringAsync(JsonSerializer.Serialize(new { ready = status.Ready, status = status.Status, retryAfterSeconds = status.RetryAfterSeconds, onlinePlayers = status.OnlinePlayers, standingByServers = status.StandingByServers, proppingServers = status.ProppingServers, activeServers = status.ActiveServers }));
         return response;
     }
 }
