@@ -42,22 +42,33 @@ public sealed class ProgressionRules
     public int XpPerElimination { get; set; } = 50;
     public int XpPerRoundSurvived { get; set; } = 20;
     public int XpPerMatchCompleted { get; set; } = 250;
+    public int ArenaPointsPerElimination { get; set; } = 10;
+    public int ArenaPointsPerMatchCompleted { get; set; } = 20;
     public Dictionary<string, int> XpByPlacement { get; set; } = new()
     {
         ["1"] = 400, ["2"] = 300, ["3"] = 200, ["4"] = 100,
         ["5"] = 100, ["6"] = 100, ["7"] = 100, ["8"] = 100
     };
+    public Dictionary<string, int> ArenaPointsByPlacement { get; set; } = new()
+    {
+        ["1"] = 80, ["2"] = 50, ["3"] = 30, ["4"] = 20,
+        ["5"] = 10, ["6"] = 10, ["7"] = 10, ["8"] = 10
+    };
 
     public static ProgressionRules Default => new();
-    public bool IsValid() => ExperiencePerLevel > 0 && XpPerElimination >= 0 && XpPerRoundSurvived >= 0 && XpPerMatchCompleted >= 0;
+    public bool IsValid() => ExperiencePerLevel > 0 && XpPerElimination >= 0 && XpPerRoundSurvived >= 0 && XpPerMatchCompleted >= 0 && ArenaPointsPerElimination >= 0 && ArenaPointsPerMatchCompleted >= 0;
     public ProgressionRules Normalize()
     {
         ExperiencePerLevel = Math.Max(1, ExperiencePerLevel);
         XpPerElimination = Math.Max(0, XpPerElimination);
         XpPerRoundSurvived = Math.Max(0, XpPerRoundSurvived);
         XpPerMatchCompleted = Math.Max(0, XpPerMatchCompleted);
+        ArenaPointsPerElimination = Math.Max(0, ArenaPointsPerElimination);
+        ArenaPointsPerMatchCompleted = Math.Max(0, ArenaPointsPerMatchCompleted);
         XpByPlacement ??= new Dictionary<string, int>();
+        ArenaPointsByPlacement ??= new Dictionary<string, int>();
         return this;
     }
     public int PlacementXp(int placement) => XpByPlacement.TryGetValue(Math.Max(1, placement).ToString(), out int value) ? Math.Max(0, value) : 0;
+    public int PlacementArenaPoints(int placement) => ArenaPointsByPlacement.TryGetValue(Math.Max(1, placement).ToString(), out int value) ? Math.Max(0, value) : 0;
 }

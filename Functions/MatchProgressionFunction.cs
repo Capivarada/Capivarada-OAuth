@@ -74,7 +74,7 @@ public sealed class MatchProgressionFunction
                 totals.ExperienceToNext = rules.ExperiencePerLevel;
                 await WriteTotals(batch.MatchId + ":" + player.EntityId, player.EntityId, player.EntityType, totals, request.FunctionContext.CancellationToken);
                 await WritePublicRecords(player.EntityId, totals, request.FunctionContext.CancellationToken);
-                int earnedPoints = ArenaPoints(player);
+                int earnedPoints = ArenaPoints(player, rules);
                 if (earnedPoints > 0)
                     await GrantArenaPoints(batch.MatchId, player.EntityId, player.EntityType, earnedPoints, request.FunctionContext.CancellationToken);
                 await receipts.CompleteAsync(batch.MatchId, player.EntityId, request.FunctionContext.CancellationToken);
@@ -111,9 +111,10 @@ public sealed class MatchProgressionFunction
         return new ProgressionAward(placement + eliminations + rounds + rules.XpPerMatchCompleted, placement, eliminations, rounds, rules.XpPerMatchCompleted);
     }
 
-    private int ArenaPoints(MatchParticipant player) =>
-        options.ArenaPointsParticipation + Math.Max(0, player.Eliminations) * options.ArenaPointsPerElimination +
-        (player.Placement == 1 ? options.ArenaPointsVictoryBonus : 0);
+    private static int ArenaPoints(MatchParticipant player, ProgressionRules rules) =>
+        rules.ArenaPointsPerMatchCompleted +
+        Math.Max(0, player.Eliminations) * rules.ArenaPointsPerElimination +
+        rules.PlacementArenaPoints(player.Placement);
 
     private async Task WriteTotals(string transactionId, string entityId, string entityType, PlayerTotals totals, CancellationToken token)
     {
