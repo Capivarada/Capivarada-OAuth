@@ -49,6 +49,8 @@ public sealed class PartyMatchmakingTicket
     public string QueueName { get; set; } = string.Empty;
     public string Stage { get; set; } = string.Empty;
     public DateTime ExpiresAtUtc { get; set; }
+    /// <summary>Server-directed polling backoff. Persisted with the party ticket so every member honors it.</summary>
+    public DateTime NextStatusCheckUtc { get; set; }
 }
 
 public static class PartyStore

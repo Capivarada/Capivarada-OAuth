@@ -15,6 +15,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
     // PlayFab requires MaxTicketSize to be strictly less than MaxMatchSize.
     private const int MaxTicketPlayers = MaxMatchPlayers - 1;
     private static readonly TimeSpan SearchWindow = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan NormalPollInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan JoinLifetime = TimeSpan.FromMinutes(15);
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -195,11 +196,23 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         string status = string.Empty;
         string matchId = string.Empty;
         bool ticketMissing = false;
+        // Party members poll the API, never PlayFab directly. Cache the short
+        // poll interval here so opening several lobby panels cannot multiply
+        // calls to GetMatchmakingTicket.
+        if (ticket.NextStatusCheckUtc > DateTime.UtcNow)
+            return await Reply(request, HttpStatusCode.OK, Searching(ticket, null, ticket.NextStatusCheckUtc));
+
         try
         {
             ticketData = await multiplayer.CallAsync("Match", "GetMatchmakingTicket", new { QueueName = ticket.QueueName, TicketId = ticket.TicketId, EscapeObject = false }, request.FunctionContext.CancellationToken);
             status = ReadString(ticketData, "Status");
             matchId = ReadString(ticketData, "MatchId");
+        }
+        catch (InvalidOperationException exception) when (IsRateLimited(exception, out int retryAfterSeconds))
+        {
+            ticket.NextStatusCheckUtc = DateTime.UtcNow.AddSeconds(retryAfterSeconds);
+            await SaveTicketAsync(party.LeaderPlayerId, ticket, request.FunctionContext.CancellationToken);
+            return await Reply(request, HttpStatusCode.OK, Searching(ticket, null, ticket.NextStatusCheckUtc));
         }
         catch (InvalidOperationException exception) when (IsTerminalTicketError(exception))
         {
@@ -243,7 +256,9 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
             return await Reply(request, HttpStatusCode.OK, new { state = "idle", error = "O ticket de pareamento expirou." });
         }
 
-        return await Reply(request, HttpStatusCode.OK, Searching(ticket));
+        ticket.NextStatusCheckUtc = DateTime.UtcNow.Add(NormalPollInterval);
+        await SaveTicketAsync(party.LeaderPlayerId, ticket, request.FunctionContext.CancellationToken);
+        return await Reply(request, HttpStatusCode.OK, Searching(ticket, null, ticket.NextStatusCheckUtc));
     }
 
     private async Task<HttpResponseData> ReplyReadyAsync(HttpRequestData request, string playerId, PartyRecord party, PartyMatchmakingTicket ticket, string matchId)
@@ -422,6 +437,22 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         exception.Message.Contains("TicketAlreadyCompleted", StringComparison.Ordinal) ||
         exception.Message.Contains("not found", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsRateLimited(InvalidOperationException exception, out int retryAfterSeconds)
+    {
+        retryAfterSeconds = 5;
+        if (!exception.Message.Contains("429", StringComparison.Ordinal) &&
+            !exception.Message.Contains("RateLimit", StringComparison.OrdinalIgnoreCase)) return false;
+        const string marker = "retryAfterSeconds";
+        int index = exception.Message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index >= 0)
+        {
+            string tail = exception.Message[(index + marker.Length)..];
+            System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(tail, @"\D*(\d+)");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int value)) retryAfterSeconds = Math.Clamp(value, 1, 120);
+        }
+        return true;
+    }
+
     private Task<PartyMatchmakingTicket> LoadTicketAsync(string leaderId) => playFab.GetInternalStateAsync(leaderId, PartyStore.MatchmakingTicketKey, () => new PartyMatchmakingTicket());
     private Task SaveTicketAsync(string leaderId, PartyMatchmakingTicket ticket, CancellationToken cancellationToken) => playFab.SaveInternalStateAsync(leaderId, PartyStore.MatchmakingTicketKey, ticket, cancellationToken);
     private Task ClearTicketAsync(string leaderId, CancellationToken cancellationToken) => playFab.RemoveInternalStateAsync(leaderId, PartyStore.MatchmakingTicketKey, cancellationToken);
@@ -440,7 +471,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
 
     private string FullQueueName() => configuration["CAPIVARADA_MATCHMAKING_FULL_QUEUE"] ?? "CapivaradaArenaFull";
     private string FallbackQueueName() => configuration["CAPIVARADA_MATCHMAKING_FALLBACK_QUEUE"] ?? "CapivaradaArenaFallback";
-    private static object Searching(PartyMatchmakingTicket ticket, string? state = null) => new { state = state ?? "searching", remainingSeconds = Math.Max(0, (int)Math.Ceiling((ticket.ExpiresAtUtc - DateTime.UtcNow).TotalSeconds)) };
+    private static object Searching(PartyMatchmakingTicket ticket, string? state = null, DateTime? nextStatusCheckUtc = null) => new { state = state ?? "searching", remainingSeconds = Math.Max(0, (int)Math.Ceiling((ticket.ExpiresAtUtc - DateTime.UtcNow).TotalSeconds)), pollAfterSeconds = Math.Max(0, (int)Math.Ceiling(((nextStatusCheckUtc ?? ticket.NextStatusCheckUtc) - DateTime.UtcNow).TotalSeconds)) };
     private static string ReadString(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out JsonElement item) ? item.GetString() ?? string.Empty : string.Empty;
     private static string? ToPhotonRegion(string region) => region.Equals("EastUs", StringComparison.OrdinalIgnoreCase) ? "us" : null;
     private static int ReadGamePort(JsonElement server)
