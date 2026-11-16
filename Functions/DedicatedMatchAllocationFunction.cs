@@ -18,13 +18,15 @@ public sealed class DedicatedMatchAllocationFunction : AuthenticatedFunction
     private readonly MatchAllocationStore allocations;
     private readonly MatchJoinTokenService tokens;
     private readonly Microsoft.Extensions.Configuration.IConfiguration configuration;
+    private readonly MpsCapacityService capacity;
 
-    public DedicatedMatchAllocationFunction(PlayerSessionService sessions, PlayFabTitleEntityClient multiplayer, MatchAllocationStore allocations, MatchJoinTokenService tokens, Microsoft.Extensions.Configuration.IConfiguration configuration) : base(sessions)
+    public DedicatedMatchAllocationFunction(PlayerSessionService sessions, PlayFabTitleEntityClient multiplayer, MatchAllocationStore allocations, MatchJoinTokenService tokens, Microsoft.Extensions.Configuration.IConfiguration configuration, MpsCapacityService capacity) : base(sessions)
     {
         this.multiplayer = multiplayer;
         this.allocations = allocations;
         this.tokens = tokens;
         this.configuration = configuration;
+        this.capacity = capacity;
     }
 
     [Function("AllocateDedicatedMatch")]
@@ -33,6 +35,9 @@ public sealed class DedicatedMatchAllocationFunction : AuthenticatedFunction
         var (session, error) = await RequirePlayerAsync(request);
         if (error != null || !session.HasValue) return error!;
         if (!tokens.IsConfigured) return await Reply(request, HttpStatusCode.ServiceUnavailable, new { error = "CAPIVARADA_MATCH_TOKEN_SECRET não foi configurado." });
+        CapacityStatus availability = await capacity.HeartbeatAsync(session.Value.PlayFabId, request.FunctionContext.CancellationToken);
+        if (!availability.Ready)
+            return await Reply(request, HttpStatusCode.ServiceUnavailable, new { error = "A arena está sendo preparada.", status = availability.Status, retryAfterSeconds = availability.RetryAfterSeconds });
 
         string buildId = configuration["CAPIVARADA_MPS_BUILD_ID"] ?? string.Empty;
         if (!Guid.TryParse(buildId, out _)) return await Reply(request, HttpStatusCode.ServiceUnavailable, new { error = "CAPIVARADA_MPS_BUILD_ID não foi configurado com o Build ID publicado." });

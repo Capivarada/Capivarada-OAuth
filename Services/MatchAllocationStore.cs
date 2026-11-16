@@ -99,6 +99,15 @@ public sealed class MatchAllocationStore
         catch (RequestFailedException exception) when (exception.Status == 404) { return false; }
     }
 
+    /// <summary>True while a session has entered gameplay and has not settled yet.</summary>
+    public async Task<bool> HasStartedSessionAsync(CancellationToken token = default)
+    {
+        await table.CreateIfNotExistsAsync(token);
+        await foreach (TableEntity entity in table.QueryAsync<TableEntity>(filter: $"RowKey eq '{SessionRowKey}'", cancellationToken: token))
+            if (entity.GetDateTime("StartedUtc").HasValue) return true;
+        return false;
+    }
+
     public async Task CloseSessionAsync(
         string matchId, CancellationToken token = default)
     {

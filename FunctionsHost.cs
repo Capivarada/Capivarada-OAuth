@@ -19,6 +19,9 @@ public static class Program
                 services.AddSingleton<PlayerSessionService>();
                 services.AddSingleton<MatchJoinTokenService>();
                 services.AddSingleton<MatchAllocationStore>();
+                services.AddSingleton<OnlinePresenceStore>();
+                services.AddSingleton<MpsCapacityService>();
+                services.AddSingleton<ProgressionRulesService>();
                 services.AddSingleton<NicknameIndexService>();
                 services.AddSingleton<MatchSettlementReceiptService>();
                 services.AddSingleton<PageTemplateService>();

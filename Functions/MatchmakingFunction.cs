@@ -27,6 +27,7 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
     private readonly MatchAllocationStore allocations;
     private readonly MatchJoinTokenService tokens;
     private readonly IConfiguration configuration;
+    private readonly MpsCapacityService capacity;
 
     public MatchmakingFunction(
         PlayerSessionService sessions,
@@ -34,13 +35,15 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
         PlayFabTitleEntityClient multiplayer,
         MatchAllocationStore allocations,
         MatchJoinTokenService tokens,
-        IConfiguration configuration) : base(sessions)
+        IConfiguration configuration,
+        MpsCapacityService capacity) : base(sessions)
     {
         this.playFab = playFab;
         this.multiplayer = multiplayer;
         this.allocations = allocations;
         this.tokens = tokens;
         this.configuration = configuration;
+        this.capacity = capacity;
     }
 
     [Function("StartPartyMatchmaking")]
@@ -50,6 +53,10 @@ public sealed class MatchmakingFunction : AuthenticatedFunction
     {
         var (session, error) = await RequirePlayerAsync(request);
         if (error != null || !session.HasValue) return error!;
+
+        CapacityStatus availability = await capacity.HeartbeatAsync(session.Value.PlayFabId, request.FunctionContext.CancellationToken);
+        if (!availability.Ready)
+            return await Reply(request, HttpStatusCode.ServiceUnavailable, new { error = "A arena está sendo preparada.", status = availability.Status, retryAfterSeconds = availability.RetryAfterSeconds });
 
         try
         {
